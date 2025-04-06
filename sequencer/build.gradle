@@ -1,0 +1,25 @@
+plugins {
+    id 'application'
+}
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
+dependencies {
+    implementation project(':common')
+}
+
+test {
+    useJUnitPlatform()
+}
+
+application {
+    mainClass = '' // add main class here
+}

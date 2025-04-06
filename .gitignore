@@ -1,0 +1,57 @@
+# Java build and class files
+*.class
+*.jar
+*.war
+*.ear
+
+# Gradle build directory
+/build/
+/buildSrc/
+/.gradle/
+/out/
+
+# IntelliJ IDEA files
+*.iml
+.idea/
+*.ipr
+*.iws
+
+# VS Code files
+.vscode/
+
+# Eclipse files
+.project
+.classpath
+.settings/
+
+# Mac and Linux system files
+.DS_Store
+._*
+Thumbs.db
+
+# Logs and runtime files
+*.log
+logs/
+*.tmp
+*.swp
+
+# Generated files
+gen/
+target/
+bin/
+
+# Local environment variables or config
+.env
+*.local
+
+# Test result and coverage output
+test-results/
+jacoco/
+coverage/
+
+# Ignore generated protobuf or IDL if any
+generated/
+
+# Optional: Ignore uploads or data dump folders
+uploads/
+data/

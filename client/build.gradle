@@ -1,0 +1,51 @@
+plugins {
+    id 'application'
+}
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
+dependencies {
+    implementation project(':common')
+    implementation 'com.sun.xml.ws:jaxws-ri:2.3.3'
+}
+
+application {
+    mainClass = 'ClientMain'
+}
+
+run {
+    standardInput = System.in
+    jvmArgs = [
+            '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
+            '--add-opens=java.base/sun.reflect.annotation=ALL-UNNAMED'
+    ]
+}
+
+jar {
+    manifest {
+        attributes(
+                'Main-Class': 'ClientMain'
+        )
+    }
+}
+
+tasks.clean {
+    doLast {
+        def txtFiles = fileTree(dir: projectDir, include: "**/*.log")
+        txtFiles.each { file ->
+            file.delete()
+            println "Deleted: ${file}"
+        }
+
+        println "All .txt files cleaned in client module: ${project.name}"
+    }
+}
+
