@@ -20,8 +20,10 @@ public class UDPMessage implements Serializable {
         RESPONSE,           // For replica responses
         ACK,                // Acknowledgments for reliability
 //        FAILURE_NOTIFICATION, // Reporting incorrect results or crashes
-//        VOTE,               // For voting during recovery
-//        PING                // For checking if a node is alive
+        VOTE,               // For voting during recovery
+        PING,                // For checking if a node is alive
+        PONG,                // Received after a Ping
+        HELLO               // Sent when an RM is restarted
     }
 
     // Unique identifier for this message.
