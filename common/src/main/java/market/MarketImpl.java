@@ -1,14 +1,13 @@
 package market;
 
+import network.UDPMessage;
+
 import javax.jws.WebService;
 import javax.jws.soap.SOAPBinding;
 import javax.xml.namespace.QName;
 import javax.xml.ws.Service;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -33,6 +32,18 @@ public class MarketImpl implements Market {
     public MarketImpl(){
 
     }
+
+    public MarketStateSnapshot getMarketState(){
+        MarketStateSnapshot thisState = new MarketStateSnapshot();
+        thisState.setMarket(market);
+        thisState.setShares(shares);
+        thisState.setBuyerRecords(buyerRecords);
+        thisState.setWeeklyCrossMarketPurchases(weeklyCrossMarketPurchases);
+        thisState.setDailyPurchases(dailyPurchases);
+
+        return thisState;
+    }
+
 
     /**
      * New Method to initialize the server object and its parameters now that the constructor must be no-argument
@@ -237,19 +248,31 @@ public class MarketImpl implements Market {
      */
     private synchronized String requestShareAvailability(String shareType, String hostReceiver, int portReceiver){
         try(DatagramSocket socket = new DatagramSocket()){
-            byte[] requestBytes = shareType.getBytes();
+
+            UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "AVAILABILITY", 0, null, shareType);
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(message);
+            oos.flush();
+
             InetAddress address = InetAddress.getByName(hostReceiver);
 
             log("_log.txt", LocalDateTime.now() + " - Sent Request for ShareAvailability - shareType:" + shareType + " port: " + portReceiver);
-            DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, address, portReceiver);
+            DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, portReceiver);
             socket.send(request);
 
-            byte[] buffer = new byte[1000];
+            byte[] buffer = new byte[4096];
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);
             socket.receive(response);
+
+            ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+            ObjectInputStream ois = new ObjectInputStream(bais);
+            UDPMessage udpResponse = (UDPMessage) ois.readObject();
+
             log("_log.txt", LocalDateTime.now() + " - Received Response for ShareAvailability - shareType:" + shareType + " port: " + portReceiver);
 
-            return new String(response.getData(), 0, response.getLength());
+            return (String) udpResponse.getPayload();
         }
         catch (Exception e){
             return "Error contacting " + hostReceiver + ": " + e.getMessage();
@@ -385,28 +408,39 @@ public class MarketImpl implements Market {
      * @param portReceiver  Port of the receiving server
      */
     private synchronized void shareCrossMarket(String buyerID, int week, int count, String hostReceiver, int portReceiver){
-        try(DatagramSocket socket = new DatagramSocket()){
+        new Thread(() -> {
+            try (DatagramSocket socket = new DatagramSocket()) {
 
-            String requestMessage = "CROSS:" + buyerID + ":" + week + ":" + count;
+                Object[] payload = {buyerID, week, count};
+                UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "CROSS", 0, null, payload);
 
-            byte[] requestBytes = requestMessage.getBytes();
-            InetAddress address = InetAddress.getByName(hostReceiver);
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                oos.writeObject(message);
+                oos.flush();
 
-            log("_log.txt", LocalDateTime.now() + " - Sent Update for Cross Market - buyerID:" + buyerID + " week: " + week + " count:" + count +
-                    " port: " + portReceiver + "message: " + requestMessage);
-            DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, address, portReceiver);
-            socket.send(request);
+                InetAddress address = InetAddress.getByName(hostReceiver);
+                DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, portReceiver);
+                socket.send(request);
+                log("_log.txt", LocalDateTime.now() + " - Sent Update for Cross Market - buyerID:" + buyerID + " week: " + week + " count:" + count +
+                        " port: " + portReceiver);
 
-            byte[] buffer = new byte[1000];
-            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
-            socket.receive(response);
-            log("_log.txt", LocalDateTime.now() + " - Sent Response for Cross Market - buyerID:" + buyerID + " week: " + week + " count:" + count +
-                    " port: " + portReceiver + "message: " + Arrays.toString(response.getData()));
+                byte[] buffer = new byte[4096];
+                DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+                socket.receive(response);
 
-        }
-        catch (Exception e){
-            e.printStackTrace();
-        }
+                ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+                ObjectInputStream ois = new ObjectInputStream(bais);
+                UDPMessage udpResponse = (UDPMessage) ois.readObject();
+
+
+                log("_log.txt", LocalDateTime.now() + " - Received Response for Cross Market - buyerID:" + buyerID + " week: " + week + " count:" + count +
+                        " port: " + portReceiver + "message: " + (String) udpResponse.getPayload());
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     /**
@@ -471,21 +505,29 @@ public class MarketImpl implements Market {
     private synchronized String requestOwnedShares(String buyerID, String hostReceiver, int portReceiver){
         try(DatagramSocket socket = new DatagramSocket()){
 
-            String requestMessage = "SHARES:" + buyerID;
+            UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "SHARES", 0, null, buyerID);
 
-            byte[] requestBytes = requestMessage.getBytes();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(message);
+            oos.flush();
+
             InetAddress address = InetAddress.getByName(hostReceiver);
-
-            log("_log.txt", LocalDateTime.now() + " - Sent Request for Owned Shares - buyerID:" + buyerID + " port: " + portReceiver + "message: " + requestMessage);
-            DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, address, portReceiver);
+            DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, portReceiver);
             socket.send(request);
+            log("_log.txt", LocalDateTime.now() + " - Sent Request for Owned Shares - buyerID:" + buyerID + " port: " + portReceiver);
 
-            byte[] buffer = new byte[1000];
+            byte[] buffer = new byte[4096];
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);
             socket.receive(response);
-            log("_log.txt", LocalDateTime.now() + " - Received Response for Owned Shares - buyerID:" + buyerID + " port: " + portReceiver + "message: " + Arrays.toString(response.getData()));
 
-            return new String(response.getData(), 0, response.getLength());
+            log("_log.txt", LocalDateTime.now() + " - Received Response for Owned Shares - buyerID:" + buyerID + " port: " + portReceiver);
+
+            ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+            ObjectInputStream ois = new ObjectInputStream(bais);
+            UDPMessage udpResponse = (UDPMessage) ois.readObject();
+
+            return (String) udpResponse.getPayload();
         }
         catch (Exception e){
             return "Error contacting " + hostReceiver + ": " + e.getMessage();
@@ -634,23 +676,32 @@ public class MarketImpl implements Market {
         new Thread(() -> {
             try (DatagramSocket socket = new DatagramSocket()) {
 
-                String requestMessage = "PURCHASE:" + shareID + ":" + shareType + ":" + shareAmount + ":" + buyerID;
+                Object[] payload = {shareID, shareType, shareAmount, buyerID};
+                UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "PURCHASE", 0, null, payload);
 
-                byte[] requestBytes = requestMessage.getBytes();
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                oos.writeObject(message);
+                oos.flush();
+
                 InetAddress address = InetAddress.getByName(hostReceiver);
-
-                log("_log.txt", LocalDateTime.now() + " - Sent Request for Purchase - shareID:" + shareID + " shareType:" + shareType +
-                        " shareAmount:" + shareAmount + " port: " + port + "message: " + requestMessage);
-                DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, address, port);
+                DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, port);
                 socket.send(request);
+                log("_log.txt", LocalDateTime.now() + " - Sent Request for Purchase - shareID:" + shareID + " shareType:" + shareType +
+                        " shareAmount:" + shareAmount + " port: " + port);
 
-                byte[] buffer = new byte[1000];
-                DatagramPacket responsePacket = new DatagramPacket(buffer, buffer.length);
-                socket.receive(responsePacket);
+                byte[] buffer = new byte[4096];
+                DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+                socket.receive(response);
+
+                ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+                ObjectInputStream ois = new ObjectInputStream(bais);
+                UDPMessage udpResponse = (UDPMessage) ois.readObject();
+                String stringResponse = (String) udpResponse.getPayload();
+
                 log("_log.txt", LocalDateTime.now() + " - Received Response for Purchase - shareID:" + shareID + " shareType:" + shareType +
-                        " shareAmount:" + shareAmount + " port: " + port + "message: " + Arrays.toString(responsePacket.getData()));
+                        " shareAmount:" + shareAmount + " port: " + port + "message: " + stringResponse);
 
-                String response = new String(responsePacket.getData(), 0, responsePacket.getLength());
             } catch (Exception e) {
                 System.out.println("Error contacting " + hostReceiver + ": " + e.getMessage());
             }
@@ -673,23 +724,33 @@ public class MarketImpl implements Market {
     public synchronized String requestValidatePurchase(String shareID, String shareType, int shareAmount, String hostReceiver, int port){
         try(DatagramSocket socket = new DatagramSocket()){
 
-            String requestMessage = "BUY_CHECK:" + shareID + ":" + shareType + ":" + shareAmount;
+            Object[] payload = {shareID, shareType, shareAmount};
+            UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "BUY_CHECK", 0, null, payload);
 
-            byte[] requestBytes = requestMessage.getBytes();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(message);
+            oos.flush();
+
             InetAddress address = InetAddress.getByName(hostReceiver);
-
-            log("_log.txt", LocalDateTime.now() + " - Sent Request for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
-                    " shareAmount:" + shareAmount + " port: " + port + "message: " + requestMessage);
-            DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, address, port);
+            DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, port);
             socket.send(request);
+            log("_log.txt", LocalDateTime.now() + " - Sent Request for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
+                    " shareAmount:" + shareAmount + " port: " + port);
 
-            byte[] buffer = new byte[1000];
+            byte[] buffer = new byte[4096];
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);
             socket.receive(response);
-            log("_log.txt", LocalDateTime.now() + " - Received Response for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
-                    " shareAmount:" + shareAmount + " port: " + port + "message: " + Arrays.toString(response.getData()));
 
-            return new String(response.getData(), 0, response.getLength());
+            ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+            ObjectInputStream ois = new ObjectInputStream(bais);
+            UDPMessage udpResponse = (UDPMessage) ois.readObject();
+            String stringResponse = (String) udpResponse.getPayload();
+
+            log("_log.txt", LocalDateTime.now() + " - Received Response for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
+                    " shareAmount:" + shareAmount + " port: " + port + "message: " + stringResponse);
+
+            return stringResponse;
         }
         catch (Exception e){
             return "Error contacting " + hostReceiver + ": " + e.getMessage();

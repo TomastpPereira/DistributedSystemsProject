@@ -1,5 +1,10 @@
 import market.MarketImpl;
+import network.UDPMessage;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 
@@ -26,48 +31,61 @@ public class UDPServer extends Thread{
 
 
             while (true){
-                byte[] buffer = new byte[1000];
+                byte[] buffer = new byte[4096];
                 DatagramPacket request = new DatagramPacket(buffer, buffer.length);
                 socket.receive(request);
 
-                String requestString = new String(request.getData(), 0, request.getLength());
-                System.out.println("UDP request string: " + requestString);
-                String response;
+                ByteArrayInputStream bais = new ByteArrayInputStream(request.getData(), 0, request.getLength());
+                ObjectInputStream ois = new ObjectInputStream(bais);
+                UDPMessage udpMessage = (UDPMessage) ois.readObject();
 
-                if (requestString.startsWith("SHARES:")){
-                    String buyerID = requestString.split(":")[1];
-                    response = market.getLocalOwnedShares(buyerID);
-                } else if (requestString.startsWith("CROSS:")) {
-                    String[] split = requestString.split(":");
-                    String buyerID = split[1];
-                    int week = Integer.parseInt(split[2]);
-                    int count = Integer.parseInt(split[3]);
-                    System.out.println("sending");
-                    market.updateCrossMarket(buyerID, week, count);
-                    System.out.println("sent");
-                    response = "Success";
-                } else if (requestString.startsWith("BUY_CHECK:")) {
-                    String[] split = requestString.split(":");
-                    String shareID = split[1];
-                    String shareType = split[2];
-                    int shareAmount = Integer.parseInt(split[3]);
-                    response = market.localValidatePurchase(shareID, shareType, shareAmount);
-                } else if (requestString.startsWith("PURCHASE:")) {
-                    String[] split = requestString.split(":");
-                    String shareID = split[1];
-                    String shareType = split[2];
-                    int shareAmount = Integer.parseInt(split[3]);
-                    String buyerID = split[4];
-                    response = market.purchaseShare(buyerID, shareID, shareType, shareAmount, "000000");
-                }else {
-                    response = market.getLocalShareAvailability(requestString);
+                UDPMessage response = null;
+
+                switch(udpMessage.getAction()){
+                    case "SHARES":
+                        String buyerID = (String) udpMessage.getPayload();
+                        String ownedShares = market.getLocalOwnedShares(buyerID);
+                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "SHARES", 0, null, ownedShares);
+                        break;
+                    case "CROSS":
+                        Object[] crossData = (Object[]) udpMessage.getPayload();
+                        market.updateCrossMarket((String) crossData[0], (int) crossData[1], (int) crossData[2]);
+                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "CROSS", 0, null, "Success");
+                        break;
+                    case "BUY_CHECK":
+                        Object[] buyCheckData = (Object[]) udpMessage.getPayload();
+                        String result = market.localValidatePurchase(
+                                (String) buyCheckData[0],
+                                (String) buyCheckData[1],
+                                (int) buyCheckData[2]);
+                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "BUY_CHECK", 0, null, result);
+                        break;
+                    case "PURCHASE":
+                        Object[] purchaseData = (Object[]) udpMessage.getPayload();
+                        String purchaseResult = market.purchaseShare(
+                                (String) purchaseData[0],
+                                (String) purchaseData[1],
+                                (String) purchaseData[2],
+                                (int) purchaseData[3],
+                                (String) purchaseData[4]);
+                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "PURCHASE", 0, null, purchaseResult);
+                        break;
+                    case "AVAILABILITY":
+                        String shareType = (String) udpMessage.getPayload();
+                        String availability = market.getLocalShareAvailability(shareType);
+                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "AVAILABILITY", 0, null, availability);
+                        break;
                 }
 
-                byte[] responseBytes = response.getBytes();
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                oos.writeObject(response);
+                oos.flush();
+
+                byte[] responseBytes = baos.toByteArray();
                 DatagramPacket responseData = new DatagramPacket(
                         responseBytes, responseBytes.length, request.getAddress(), request.getPort()
                 );
-
                 socket.send(responseData);
             }
 

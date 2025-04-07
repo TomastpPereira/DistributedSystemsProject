@@ -1,10 +1,12 @@
+import network.UDPMessage;
+
 import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-// Assumed UDPMessage class from earlier (without sequenceNumber, with messageId, action, retry, and endpoints).
-// import your.UDPMessage;
+// Assumed network.UDPMessage class from earlier (without sequenceNumber, with messageId, action, retry, and endpoints).
+// import your.network.UDPMessage;
 
 public class FrontEnd {
 
@@ -94,7 +96,7 @@ public class FrontEnd {
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
             try {
                 socket.receive(packet);
-                // Deserialize the UDPMessage from packet.
+                // Deserialize the network.UDPMessage from packet.
                 UDPMessage msg = deserialize(packet.getData(), packet.getLength());
                 // Enqueue the message for processing.
                 incomingQueue.offer(msg);
@@ -281,7 +283,7 @@ public class FrontEnd {
         return map;
     }
 
-    // Method to send a UDPMessage to a specified destination.
+    // Method to send a network.UDPMessage to a specified destination.
     private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort) {
         try {
             byte[] data = serialize(msg);
@@ -292,7 +294,7 @@ public class FrontEnd {
         }
     }
 
-    // Serialize UDPMessage to byte array.
+    // Serialize network.UDPMessage to byte array.
     private byte[] serialize(UDPMessage msg) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ObjectOutputStream oos = new ObjectOutputStream(baos);
@@ -301,7 +303,7 @@ public class FrontEnd {
         return baos.toByteArray();
     }
 
-    // Deserialize UDPMessage from byte array.
+    // Deserialize network.UDPMessage from byte array.
     private UDPMessage deserialize(byte[] data, int length) throws IOException {
         ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
         try (ObjectInputStream ois = new ObjectInputStream(bais)) {
@@ -316,7 +318,7 @@ public class FrontEnd {
     public void sendClientRequestToSequencer(UDPMessage clientRequest) {
         // Record the original request in the sequenceTasks map.
         sequenceTasks.put(clientRequest.getMessageId(), new SequenceTask(clientRequest, System.currentTimeMillis()));
-        // Create a UDPMessage for the sequencer; action remains same.
+        // Create a network.UDPMessage for the sequencer; action remains same.
         UDPMessage sequencerMsg = new UDPMessage(UDPMessage.MessageType.REQUEST, clientRequest.getMessageId(),
                 clientRequest.getAction(), 0, clientRequest.getEndpoints(), clientRequest.getPayload());
         // Send the message to the Sequencer.
@@ -341,7 +343,7 @@ public class FrontEnd {
         fe.start();
 
         // For demonstration, simulate a client request.
-        // Construct a dummy client request UDPMessage.
+        // Construct a dummy client request network.UDPMessage.
         Map<InetAddress, Integer> clientEndpoint = new HashMap<>();
         clientEndpoint.put(InetAddress.getByName("127.0.0.1"), 8000);
         UDPMessage clientReq = new UDPMessage(UDPMessage.MessageType.REQUEST, UUID.randomUUID().toString(),

@@ -1,3 +1,8 @@
+import network.UDPMessage;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -110,7 +115,28 @@ public class ReplicaManager {
             case RESTART:
                 restart();
                 break;
+            case HELLO;
+                sendData();
+                break;
         }
+    }
+
+    private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort){
+        try {
+            byte[] data = serialize(msg);
+            DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
+            DatagramSocket socket = new DatagramSocket(RM_PORT);
+            socket.send(packet);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private byte[] serialize(UDPMessage msg) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(msg);
+        oos.flush();
+        return baos.toByteArray();
     }
 
     private void handleSequencedRequest(UDPMessage msg){
@@ -146,6 +172,9 @@ public class ReplicaManager {
     }
 
     private void sendData(){
+
+        ReplicaStateSnapshot toSend = new ReplicaStateSnapshot();
+
 
     }
 
@@ -187,16 +216,17 @@ public class ReplicaManager {
                     InetAddress address = InetAddress.getByName(RM_IP);
                     int port = entry.getValue();
 
-
                     UDPMessage helloMsg = new UDPMessage(UDPMessage.MessageType.HELLO, "hello", 0,
                             RETURN_INFO, "Requesting Data Recovery");
-                    sendUDPMessage(helloMsg, entry.getKey(), entry.getValue());
+                    sendUDPMessage(helloMsg, address, port);
                 }
             }
         } catch (Exception e){
             e.printStackTrace();
         }
     }
+
+
 
 
 }

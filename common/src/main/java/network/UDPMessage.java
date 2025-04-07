@@ -1,3 +1,5 @@
+package network;
+
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.util.Map;
@@ -135,7 +137,7 @@ public class UDPMessage implements Serializable {
 
     @Override
     public String toString() {
-        return "UDPMessage{" +
+        return "network.UDPMessage{" +
                 "messageId='" + messageId + '\'' +
                 ", messageType=" + messageType +
                 ", action='" + action + '\'' +
