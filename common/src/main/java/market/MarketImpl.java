@@ -19,10 +19,10 @@ import java.time.LocalDateTime;
 @WebService(endpointInterface = "market.Market")
 public class MarketImpl implements Market {
 
-    private Map<String, Map<String, Share>> shares; // shareType -> (shareID -> info)
-    private Map<String, Map <String, Integer>> buyerRecords; // buyerID -> (shareID -> # shares)
-    private Map<String, Map<Integer, Integer>> weeklyCrossMarketPurchases; // buyerID -> (week -> count)
-    private Map<String, Map<String, Set<String>>> dailyPurchases; // buyerID -> (date -> shareTypes purchased)
+    private HashMap<String, HashMap<String, Share>> shares; // shareType -> (shareID -> info)
+    private HashMap<String, HashMap<String, Integer>> buyerRecords; // buyerID -> (shareID -> # shares)
+    private HashMap<String, HashMap<Integer, Integer>> weeklyCrossMarketPurchases; // buyerID -> (week -> count)
+    private HashMap<String, HashMap<String, Set<String>>> dailyPurchases; // buyerID -> (date -> shareTypes purchased)
     private final String logPath = "logs/";
 
     private String market;
@@ -42,6 +42,13 @@ public class MarketImpl implements Market {
         thisState.setDailyPurchases(dailyPurchases);
 
         return thisState;
+    }
+
+    public void updateMarketState(MarketStateSnapshot snapshot){
+        this.shares = snapshot.getShares();
+        this.buyerRecords = snapshot.getBuyerRecords();
+        this.weeklyCrossMarketPurchases = snapshot.getWeeklyCrossMarketPurchases();
+        this.dailyPurchases = snapshot.getDailyPurchases();
     }
 
 

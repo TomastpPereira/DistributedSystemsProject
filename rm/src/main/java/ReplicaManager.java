@@ -1,11 +1,8 @@
 import network.UDPMessage;
+import market.MarketStateSnapshot;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,6 +22,7 @@ public class ReplicaManager {
     private PriorityQueue<String> deliveryQueue;
     private Map<String, Set<String>> votesForReplica;
     private Map<String, Integer> failureCount;
+    private Map<String, Integer> markets;
 
     private Map<String, Integer> RM_PORTS = new HashMap<String, Integer>(){{put("RM1", 7001); put("RM2", 7002);put("RM3", 7003);}};
 
@@ -51,12 +49,16 @@ public class ReplicaManager {
         // Launching Replica
             // Central Repos will be at 7011, 7012, 7013
         centralRepo = new CentralRepositoryServer(ip, port+10);
+        markets.put("Central", port+10);
             // London will be at 7021, 7022, 7023
         londonServer = new LondonServer(ip, port+20);
+        markets.put("LON", port+20);
             // London will be at 7031, 7032, 7033
         nyServer = new NYServer(ip, port+30);
+        markets.put("NY", port+30);
             // London will be at 7041, 7042, 7043
         tokyoServer = new TokyoServer(ip, port+40);
+        markets.put("TOK", port+40);
 
         // Initializing Necessary Structures
         expectedSequence = 0; //or 1?
@@ -101,23 +103,33 @@ public class ReplicaManager {
             case ACK:
                 break;
             case FAILURE_NOTIFICATION: // DOES THIS CONSIDER BOTH TYPES?
+                String failedRM = (String) msg.getPayload(); // Payload should be the string name of the failed RM
+                sendPing(failedRM, RM_IP, RM_PORTS.get(failedRM));
                 break;
             case VOTE:
-                break;
+
             case PING:
-                sendPong();
-                break;
-            case PONG:
-                break;
-            case DATA_REQUEST:
-                sendData();
+                UDPMessage pong = new UDPMessage(UDPMessage.MessageType.PONG, null, 0, null, null);
+                InetAddress address = null;
+                try {
+                    address = InetAddress.getByName(RM_IP);
+                } catch (UnknownHostException e) {
+                    throw new RuntimeException(e);
+                }
+                int port = msg.getEndpoints().get(address);
+                sendUDPMessage(pong, address, port);
                 break;
             case RESTART:
                 restart();
                 break;
-            case HELLO;
-                sendData();
+            case HELLO:
+                sendData(msg.getEndpoints());
                 break;
+            case SYNC:
+                ReplicaStateSnapshot snapshot = (ReplicaStateSnapshot) msg.getPayload();
+                loadData(snapshot);
+                break;
+
         }
     }
 
@@ -137,6 +149,14 @@ public class ReplicaManager {
         oos.writeObject(msg);
         oos.flush();
         return baos.toByteArray();
+    }
+    private UDPMessage deserialize(byte[] data, int length) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
+        try (ObjectInputStream ois = new ObjectInputStream(bais)) {
+            return (UDPMessage) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Class not found during deserialization", e);
+        }
     }
 
     private void handleSequencedRequest(UDPMessage msg){
@@ -166,20 +186,96 @@ public class ReplicaManager {
         }
     }
 
-    //TODO
-    private void sendPong() {
+    public void sendPing(String replicaName, String ip, int port){
+        try (DatagramSocket socket = new DatagramSocket()){
+            socket.setSoTimeout(5000); // TODO: Adjust time
+
+            InetAddress address = InetAddress.getByName(ip);
+
+            UDPMessage ping = new UDPMessage(UDPMessage.MessageType.PING, null, 0, null, null);
+            sendUDPMessage(ping, address, port);
+
+            byte[] buffer = new byte[4096];
+            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+            socket.receive(response);
+
+            UDPMessage udpResponse = deserialize(response.getData(), response.getLength());
+
+            if (udpResponse.getMessageType().equals(UDPMessage.MessageType.PONG)){
+                // Received
+            }
+
+        } catch (SocketTimeoutException e) {
+            voteForRestart(replicaName);
+        } catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    private void sendData(Map<InetAddress, Integer> endpoints){
+
+        try {
+            DatagramSocket socket = new DatagramSocket();
+            for (String market: markets.keySet()){
+                int port = markets.get(market);
+                InetAddress address = InetAddress.getByName(RM_IP);
+
+                UDPMessage request = new UDPMessage(UDPMessage.MessageType.REQUEST, "DATA-SEND", 0, null, null);
+                sendUDPMessage(request, address, port);
+            }
+
+            ReplicaStateSnapshot replicaSnapshot = new ReplicaStateSnapshot();
+            int responsesReceived = 0;
+
+            while(responsesReceived < 3){
+                try {
+                    byte[] buffer = new byte[4096];
+                    DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+                    socket.receive(response);
+
+                    ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+                    ObjectInputStream ois = new ObjectInputStream(bais);
+                    UDPMessage udpResponse = (UDPMessage) ois.readObject();
+
+                    if (udpResponse.getAction().equals("DATA")){
+                        MarketStateSnapshot marketSnapshot = (MarketStateSnapshot) udpResponse.getPayload();
+                        String fromMarket = marketSnapshot.getMarket();
+                        replicaSnapshot.put(fromMarket, marketSnapshot);
+                        responsesReceived++;
+                    }
+                } catch (Exception e){
+                    e.printStackTrace();
+                    break;
+                }
+            }
+
+            socket.close();
+
+            UDPMessage syncMessage = new UDPMessage(UDPMessage.MessageType.SYNC, null, 0, null, replicaSnapshot);
+            InetAddress address = (InetAddress) endpoints.keySet().toArray()[0];
+            sendUDPMessage(syncMessage, address, endpoints.get(address));
+
+        } catch (Exception e){
+            e.printStackTrace();
+        }
 
     }
 
-    private void sendData(){
+    private void loadData(ReplicaStateSnapshot snapshot){
+        try {
+            for (String market: markets.keySet()){
+                MarketStateSnapshot marketSnapshot = snapshot.getMarketSnapshots().get(market);
 
-        ReplicaStateSnapshot toSend = new ReplicaStateSnapshot();
+                InetAddress address = InetAddress.getByName(RM_IP);
+                int port = markets.get(market);
 
-
-    }
-
-    private void loadData(){
-
+                UDPMessage helloMsg = new UDPMessage(UDPMessage.MessageType.REQUEST, "DATA-RECEIVE", 0,
+                        RETURN_INFO, marketSnapshot);
+                sendUDPMessage(helloMsg, address, port);
+            }
+        } catch (Exception e){
+            e.printStackTrace();
+        }
     }
 
     private void restart(){

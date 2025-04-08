@@ -1,19 +1,13 @@
 import market.MarketImpl;
+import market.MarketStateSnapshot;
 import network.UDPMessage;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 
 /**
  * UDP Server which allows for the messages to be passed between markets.
- * The UDP server currently serves 3 message types associated with the following tags:
- * SHARES - Returns the owned shares for the requested buyer
- * CROSS - Updates the buyer's cross-market purchase log
- * blank - Share the local share availability of the market
  */
 public class UDPServer extends Thread{
 
@@ -28,7 +22,6 @@ public class UDPServer extends Thread{
     public void run(){
         try (DatagramSocket socket = new DatagramSocket(port)){
             System.out.println("UDP Server connected to port " + port);
-
 
             while (true){
                 byte[] buffer = new byte[4096];
@@ -75,6 +68,17 @@ public class UDPServer extends Thread{
                         String availability = market.getLocalShareAvailability(shareType);
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "AVAILABILITY", 0, null, availability);
                         break;
+                    case "DATA-SEND":
+                        MarketStateSnapshot snapshotSend = market.getMarketState();
+                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "DATA", 0, null, snapshotSend);
+                        break;
+                    case "DATA-RECEIVE":
+                        MarketStateSnapshot snapshotReceive = (MarketStateSnapshot) udpMessage.getPayload();
+                        market.updateMarketState(snapshotReceive);
+                        response = new UDPMessage(UDPMessage.MessageType.ACK, "OK", 0, null, null);
+                        break;
+                    default:
+                        break;
                 }
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -93,5 +97,15 @@ public class UDPServer extends Thread{
         catch(Exception e){
             e.printStackTrace();
         }
+    }
+
+
+
+    private byte[] serialize(UDPMessage msg) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(msg);
+        oos.flush();
+        return baos.toByteArray();
     }
 }

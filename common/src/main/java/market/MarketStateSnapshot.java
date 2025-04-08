@@ -1,7 +1,5 @@
 package market;
 
-import market.Share;
-
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
@@ -9,10 +7,11 @@ import java.util.Set;
 
 public class MarketStateSnapshot implements Serializable {
     private String market;
-    private Map<String, Map<String, Share>> shares; // shareType -> (shareID -> info)
-    private Map<String, Map <String, Integer>> buyerRecords; // buyerID -> (shareID -> # shares)
-    private Map<String, Map<Integer, Integer>> weeklyCrossMarketPurchases; // buyerID -> (week -> count)
-    private Map<String, Map<String, Set<String>>> dailyPurchases;
+
+    private HashMap<String, HashMap<String, Share>> shares; // shareType -> (shareID -> info)
+    private HashMap<String, HashMap <String, Integer>> buyerRecords; // buyerID -> (shareID -> # shares)
+    private HashMap<String, HashMap<Integer, Integer>> weeklyCrossMarketPurchases; // buyerID -> (week -> count)
+    private HashMap<String, HashMap<String, Set<String>>> dailyPurchases;
 
     public String getMarket() {
         return market;
@@ -22,37 +21,38 @@ public class MarketStateSnapshot implements Serializable {
         this.market = market;
     }
 
-    public Map<String, Map<String, Share>> getShares() {
+    public HashMap<String, HashMap<String, Share>> getShares() {
         return shares;
     }
 
-    public void setShares(Map<String, Map<String, Share>> shares) {
+    public void setShares(HashMap<String, HashMap<String, Share>> shares) {
         this.shares = shares;
     }
 
-    public Map<String, Map<String, Integer>> getBuyerRecords() {
+    public HashMap<String, HashMap<String, Integer>> getBuyerRecords() {
         return buyerRecords;
     }
 
-    public void setBuyerRecords(Map<String, Map<String, Integer>> buyerRecords) {
+    public void setBuyerRecords(HashMap<String, HashMap<String, Integer>> buyerRecords) {
         this.buyerRecords = buyerRecords;
     }
 
-    public Map<String, Map<Integer, Integer>> getWeeklyCrossMarketPurchases() {
+    public HashMap<String, HashMap<Integer, Integer>> getWeeklyCrossMarketPurchases() {
         return weeklyCrossMarketPurchases;
     }
 
-    public void setWeeklyCrossMarketPurchases(Map<String, Map<Integer, Integer>> weeklyCrossMarketPurchases) {
+    public void setWeeklyCrossMarketPurchases(HashMap<String, HashMap<Integer, Integer>> weeklyCrossMarketPurchases) {
         this.weeklyCrossMarketPurchases = weeklyCrossMarketPurchases;
     }
 
-    public Map<String, Map<String, Set<String>>> getDailyPurchases() {
+    public HashMap<String, HashMap<String, Set<String>>> getDailyPurchases() {
         return dailyPurchases;
     }
 
-    public void setDailyPurchases(Map<String, Map<String, Set<String>>> dailyPurchases) {
+    public void setDailyPurchases(HashMap<String, HashMap<String, Set<String>>> dailyPurchases) {
         this.dailyPurchases = dailyPurchases;
     }
+
 
 }
 
