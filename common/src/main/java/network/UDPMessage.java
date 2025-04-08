@@ -16,45 +16,33 @@ public class UDPMessage implements Serializable {
         this.sequenceNumber = sequenceNumber;
     }
 
-    // Message types that are commonly used in the project.
     public enum MessageType {
-        REQUEST,            // For client requests
-        RESPONSE,           // For replica responses
-        ACK,                // Acknowledgments for reliability
-//        FAILURE_NOTIFICATION, // Reporting incorrect results or crashes
-        VOTE,               // For voting during recovery
-        PING,                // For checking if a node is alive
-        PONG,                // Received after a Ping
-        HELLO,               // Sent when an RM is restarted
-        SYNC                // Used when backup data is sent to an RM
+        REQUEST,
+        RESPONSE,
+        ACK,
+        VOTE,
+        PING,
+        PONG,
+        HELLO,
+        SYNC
     }
 
-    // Unique identifier for this message.
     private String messageId;
 
-    // The type of message (REQUEST, RESPONSE, etc.)
     private MessageType messageType;
 
-    // The action initiated by the client (e.g., "purchaseShare", "sellShare").
     private String action;
 
-    // The number of times this message has been retried.
     private int retry;
 
-    // Instead of separate requestId and senderId, we store a map of endpoints.
-    // The key is the InetAddress and the value is the port number.
     private Map<InetAddress, Integer> endpoints;
 
-    // The payload contains the main content of the message.
     private Object payload;
 
-    // Timestamp when the message was created.
     private long timestamp;
 
-    //Sequence Number
     private long sequenceNumber;
 
-    // Constructor
     public UDPMessage(MessageType messageType, String action, int retry,
                       Map<InetAddress, Integer> endpoints, Object payload) {
         this.messageType = messageType;
@@ -78,8 +66,6 @@ public class UDPMessage implements Serializable {
         this.sequenceNumber = sequenceNumber;
     }
 
-
-    // Getters and Setters
     public String getMessageId() {
         return messageId;
     }

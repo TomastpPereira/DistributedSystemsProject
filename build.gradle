@@ -17,7 +17,7 @@ subprojects {
     targetCompatibility = JavaVersion.VERSION_17
 
     dependencies {
-        // Add common testing support for all modules
+        implementation 'io.github.cdimascio:dotenv-java:3.0.0'
         testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
     }
 
