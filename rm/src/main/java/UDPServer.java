@@ -5,6 +5,7 @@ import network.UDPMessage;
 import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 
 /**
  * UDP Server which allows for the messages to be passed between markets.
@@ -87,9 +88,12 @@ public class UDPServer extends Thread{
                 oos.flush();
 
                 byte[] responseBytes = baos.toByteArray();
-                DatagramPacket responseData = new DatagramPacket(
-                        responseBytes, responseBytes.length, request.getAddress(), request.getPort()
-                );
+
+                // Retrieving the info of the FE to send there and not back to the RM
+                InetAddress address = (InetAddress) udpMessage.getEndpoints().keySet().toArray()[0];
+                int port = udpMessage.getEndpoints().get(address);
+
+                DatagramPacket responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
                 socket.send(responseData);
             }
 

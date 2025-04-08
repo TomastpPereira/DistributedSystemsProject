@@ -68,6 +68,9 @@ public class ReplicaManager {
         votesForReplica.put("RM1", new HashSet<String>());
         votesForReplica.put("RM2", new HashSet<String>());
         votesForReplica.put("RM3", new HashSet<String>());
+        failureCount.put("RM1",0);
+        failureCount.put("RM2",0);
+        failureCount.put("RM3",0);
 
         // Begin Active Listener
         startListener();
@@ -97,17 +100,23 @@ public class ReplicaManager {
 
     private void handleMessage(UDPMessage msg){
         switch(msg.getMessageType()){
-            case SEQUENCED_REQUEST:
+            case REQUEST:
                 handleSequencedRequest(msg);
                 break;
-            case ACK:
+            case CRASH_NOTIFICATION:
+                String crashedRM = (String) msg.getPayload(); // Payload should be the string name of the failed RM
+                sendPing(crashedRM, RM_IP, RM_PORTS.get(crashedRM));
                 break;
-            case FAILURE_NOTIFICATION: // DOES THIS CONSIDER BOTH TYPES?
-                String failedRM = (String) msg.getPayload(); // Payload should be the string name of the failed RM
-                sendPing(failedRM, RM_IP, RM_PORTS.get(failedRM));
+            case INCORRECT_RESULT_NOTIFICATION:
+                String incorrectRM = (String) msg.getPayload();
+                processFailure(incorrectRM);
                 break;
             case VOTE:
-
+                String payload = (String) msg.getPayload();
+                String crashed = payload.split(":")[0];
+                String voter = payload.split(":")[1];
+                handleVote(crashed, voter);
+                break;
             case PING:
                 UDPMessage pong = new UDPMessage(UDPMessage.MessageType.PONG, null, 0, null, null);
                 InetAddress address = null;
@@ -131,6 +140,20 @@ public class ReplicaManager {
                 break;
 
         }
+    }
+
+    private void processFailure(String incorrectRM) {
+
+        int numFails = failureCount.get(incorrectRM);
+        numFails++;
+        failureCount.put(incorrectRM, numFails);
+
+        // If failed 3 times, send vote out
+        // TODO: Adapt to be 3 fails in a row
+        if (numFails >= 3){
+            voteForRestart(incorrectRM);
+        }
+
     }
 
     private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort){
@@ -181,9 +204,39 @@ public class ReplicaManager {
                 //TODO: handle an old message
             }
 
-
-
         }
+    }
+
+    /**
+     * Begins the processing of the request, sending it to the markets
+     * @param msg UDPMessage containing the data of the request
+     */
+    //TODO: THIS MUST ALIGN WITH THE FORMAT OF MESSAGES BEING SENT
+    // Assumes a request to the markets is of type REQUEST, and payload is MARKET_NAME:param1:param2:etc
+    // Action is the type of request, ex purchaseShare, swapShare
+    // MARKET_NAME should be NY, LON or TOK
+    private void deliver(UDPMessage msg){
+
+        Object[] requestData = (Object[]) msg.getPayload();
+        String marketName = (String) requestData[0];
+
+        // Send data should just be param1:param2:etc
+        Object[] sendData = new Object[requestData.length - 1];
+        for (int i = 1; i < requestData.length; i++) {
+            sendData[i - 1] = requestData[i];
+        }
+
+        UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.getAction(), 0, null, sendData);
+
+        InetAddress address;
+        int marketPort = markets.get(marketName);
+        try {
+            address = InetAddress.getByName(RM_IP);
+        } catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
+
+        sendUDPMessage(forwardMessage, address, marketPort);
     }
 
     public void sendPing(String replicaName, String ip, int port){
@@ -210,6 +263,55 @@ public class ReplicaManager {
         } catch (Exception e){
             e.printStackTrace();
         }
+    }
+
+    private void voteForRestart(String crashedName) {
+
+        // Adding local vote
+        Set<String> currentSet = votesForReplica.get(crashedName);
+        currentSet.add(RM_NAME);
+        votesForReplica.put(crashedName, currentSet);
+
+        // Sending vote out
+        UDPMessage vote = new UDPMessage(UDPMessage.MessageType.VOTE, null, 0, null, crashedName+":"+RM_NAME);
+
+        for (Map.Entry<String, Integer> entry: RM_PORTS.entrySet()){
+            String rmName = entry.getKey();
+            int port = entry.getValue();
+
+            InetAddress address;
+            if (!rmName.equals(crashedName) && !rmName.equals(RM_NAME)){
+                try {
+                    address = InetAddress.getByName(RM_IP);
+                } catch (UnknownHostException e) {
+                    throw new RuntimeException(e);
+                }
+                sendUDPMessage(vote, address, port);
+            }
+        }
+    }
+
+    private void handleVote(String crashed, String voter){
+        Set<String> currentSet = votesForReplica.get(crashed);
+        currentSet.add(voter);
+
+        int totalVotes = currentSet.size();
+        int majority = (RM_PORTS.size() / 2) + 1;
+
+        // Send a restart if majority is reached
+        if(totalVotes >= majority){
+            UDPMessage restartMessage = new UDPMessage(UDPMessage.MessageType.RESTART, null, 0, null, null);
+            InetAddress address;
+            int port = RM_PORTS.get(crashed);
+            try {
+                address = InetAddress.getByName(RM_IP);
+            } catch (UnknownHostException e) {
+                throw new RuntimeException(e);
+            }
+
+            sendUDPMessage(restartMessage, address, port);
+        }
+
     }
 
     private void sendData(Map<InetAddress, Integer> endpoints){

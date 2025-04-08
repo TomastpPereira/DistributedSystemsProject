@@ -24,7 +24,10 @@ public class UDPMessage implements Serializable {
         PING,
         PONG,
         HELLO,
-        SYNC
+        SYNC,
+        RESTART,
+        CRASH_NOTIFICATION,
+        INCORRECT_RESULT_NOTIFICATION
     }
 
     private String messageId;
