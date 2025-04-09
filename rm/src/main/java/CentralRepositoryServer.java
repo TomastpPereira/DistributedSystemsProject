@@ -19,9 +19,8 @@ public class CentralRepositoryServer {
 
     public CentralRepositoryServer(String ip, int port){
         CentralRepositoryImpl repository = new CentralRepositoryImpl();
-        String ipPublish = "http://" + ip + ":" + Integer.toString(port) + "/centralrepository";
+        String ipPublish = "http://" + ip + ":" + port + "/centralrepository";
         centralEndpoint = Endpoint.publish(ipPublish, repository);
     }
 
-    //TODO: Modify market registration to the central repository
 }

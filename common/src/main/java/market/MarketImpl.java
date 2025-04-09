@@ -57,11 +57,11 @@ public class MarketImpl implements Market {
      * @param market    The market associated with this object (NYK, LON or TOK)
      * @param port      The port for this market server.
      */
-    public void initialize(String market, int port){
+    public void initialize(String market, int port, String ip, int centralPort){
         this.market = market;
         this.port = port;
 
-        registerWithCentralRepository();
+        registerWithCentralRepository(ip, centralPort);
         shares = new HashMap<>();
         shares.put("Equity", new HashMap<>());
         shares.put("Bonus", new HashMap<>());
@@ -80,9 +80,9 @@ public class MarketImpl implements Market {
     /**
      * Forms a connection between the market and the central repository and registers its port information.
      */
-    private void registerWithCentralRepository() {
+    private void registerWithCentralRepository(String ip, int port) {
         try {
-            URL wsdlURL = new URL("http://localhost:1096/centralrepository?wsdl");
+            URL wsdlURL = new URL("http://" + ip + ":" + port + "/centralrepository?wsdl");
             QName qname = new QName("http://DSMS/", "CentralRepositoryImplService");
             Service service = Service.create(wsdlURL, qname);
             CentralRepository repository = service.getPort(CentralRepository.class);
