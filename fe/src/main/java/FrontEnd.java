@@ -11,17 +11,15 @@ public class FrontEnd {
     private InetSocketAddress sequencerEndpoint;
     private List<InetSocketAddress> replicaManagerEndpoints;
     private DatagramSocket socket;
-    private BlockingQueue<UDPMessage> incomingQueue = new LinkedBlockingQueue<>();
-    private ExecutorService taskExecutor = Executors.newFixedThreadPool(5);
-    private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
-    private ConcurrentHashMap<String, SentMessage> sentMessages = new ConcurrentHashMap<>();
-    private ConcurrentHashMap<String, SequenceTask> sequenceTasks = new ConcurrentHashMap<>();
+    private BlockingQueue<Message> recieveMessage = new LinkedBlockingQueue<>();
+    private BlockingQueue<SendMessage> sentMessages = new LinkedBlockingQueue<>();
+    private BlockingQueue<ClientRequest> sequencerQueue = new LinkedBlockingQueue<>();
+    private static ExecutorService taskExecutor = Executors.newFixedThreadPool(10);
     private static BufferedLog log;
 
     private static int fePort;
 
     private static long ACK_TIMEOUT;
-    private static long SEQUENCER_TIMEOUT;
     private static long REPLICA_RESPONSE_TIMEOUT;
 
     public FrontEnd(InetSocketAddress sequencerEndpoint, List<InetSocketAddress> replicaManagerEndpoints) throws SocketException {
@@ -30,174 +28,115 @@ public class FrontEnd {
         this.socket = new DatagramSocket(fePort);
         fePort = Integer.parseInt(Dotenv.load().get("FE_PORT"));
         ACK_TIMEOUT = Long.parseLong(Dotenv.load().get("ACK_TIMEOUT"));
-        SEQUENCER_TIMEOUT = Long.parseLong(Dotenv.load().get("SEQUENCE_TIMEOUT"));
         REPLICA_RESPONSE_TIMEOUT = Long.parseLong(Dotenv.load().get("REPLICA_RESPONSE_TIMEOUT"));
         log = new BufferedLog("logs/", "Front-End", "Front-End");
     }
 
-    private static class SentMessage {
-        UDPMessage message;
-        long timeSent;
+    private class Message {
+        final UDPMessage message;
+        final long timeSent;
+        final InetSocketAddress endpoint;
 
-        public SentMessage(UDPMessage message, long timeSent) {
+        public Message(UDPMessage message, InetSocketAddress endpoint) {
             this.message = message;
-            this.timeSent = timeSent;
+            this.timeSent = System.currentTimeMillis();
+            this.endpoint = endpoint;
         }
     }
 
-    private static class SequenceTask {
-        UDPMessage originalRequest;
-        volatile boolean sequencerAckReceived = false;
-        List<UDPMessage> replicaResponses = Collections.synchronizedList(new ArrayList<>());
-        long timeSent;
+    private class SendMessage extends Message {
+        boolean isSend;
 
-        public SequenceTask(UDPMessage originalRequest, long timeSent) {
-            this.originalRequest = originalRequest;
-            this.timeSent = timeSent;
+        public SendMessage(boolean isSend, UDPMessage message, InetSocketAddress endpoint) {
+            super(message, endpoint);
+            this.isSend = isSend;
+        }
+
+        public SendMessage(UDPMessage message, InetSocketAddress endpoint) {
+            super(message, endpoint);
+            this.isSend = false;
+        }
+
+        public void sent() {
+            this.isSend = true;
+        }
+
+        public boolean isSend() {
+            return this.isSend;
         }
     }
 
-    public void start() {
-        new Thread(this::receiveLoop).start();
-        new Thread(this::processIncomingMessages).start();
-        scheduler.scheduleAtFixedRate(this::checkAndResendMessages, ACK_TIMEOUT, ACK_TIMEOUT, TimeUnit.MILLISECONDS);
-        scheduler.scheduleAtFixedRate(this::checkSequenceTasks, 1000, 1000, TimeUnit.MILLISECONDS);
-    }
+    private class ClientRequest {
+        final Long sequenceNumber;
+        final long timestamp;
+        ArrayList<ReplicateResponse> replicaResponses;
 
-    private void receiveLoop() {
-        byte[] buffer = new byte[4096];
-        while (true) {
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-            try {
-                socket.receive(packet);
-                UDPMessage msg = deserialize(packet.getData(), packet.getLength());
-                incomingQueue.offer(msg);
-            } catch (IOException e) {
-                System.out.println("IOException in Front-End receiveLoop " + e.getMessage());
+        public ClientRequest(Long sequenceNumber) {
+            this.sequenceNumber = sequenceNumber;
+            this.timestamp = System.currentTimeMillis();
+            this.replicaResponses = new ArrayList<>();
+        }
+
+        public void addResponse(ReplicateResponse response) {
+            if (!isFull()) {
+                replicaResponses.add(response);
             }
         }
-    }
 
-    private void processIncomingMessages() {
-        while (true) {
-            try {
-                UDPMessage msg = incomingQueue.take();
-                taskExecutor.submit(() -> handleUDPMessage(msg));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+        private boolean isFull() {
+            return replicaResponses.size() == 3;
+        }
+
+        public ReplicateResponseMetric analyzeResponses() {
+            Map<String, List<InetSocketAddress>> groupedByResult = new HashMap<>();
+            for (ReplicateResponse response : replicaResponses) {
+                groupedByResult
+                        .computeIfAbsent(response.result, k -> new ArrayList<>())
+                        .add(response.replicaManagerEndpoint);
             }
-        }
-    }
 
-    private void handleUDPMessage(UDPMessage msg) {
-        switch (msg.getMessageType()) {
-            case ACK:
-                handleAck(msg);
-                break;
-            case RESPONSE:
-                handleReplicaResponse(msg);
-                break;
-            default:
-                System.out.println("Received unknown message type: " + msg);
-        }
-    }
+            String majorityResult = null;
+            List<InetSocketAddress> matched = new ArrayList<>();
 
-    private void handleAck(UDPMessage ackMsg) {
-        String msgId = ackMsg.getMessageId();
-        if (sentMessages.containsKey(msgId)) {
-            sentMessages.remove(msgId);
-            SequenceTask task = sequenceTasks.get(msgId);
-            if (task != null) {
-                task.sequencerAckReceived = true;
-                System.out.println("Sequencer ACK received for message: " + msgId);
-            }
-        }
-    }
-
-    private void handleReplicaResponse(UDPMessage respMsg) {
-        String msgId = respMsg.getMessageId();
-        SequenceTask task = sequenceTasks.get(msgId);
-        if (task != null) {
-            task.replicaResponses.add(respMsg);
-            System.out.println("Received response from replica: " + respMsg.getEndpoints() + " for message: " + msgId);
-            if (task.replicaResponses.size() >= 3) {
-                String correctResult = validateReplicaResponses(task.replicaResponses);
-                if (correctResult != null) {
-                    sendResultToClient(task.originalRequest, correctResult);
-                    sequenceTasks.remove(msgId);
-                } else {
-                    long now = System.currentTimeMillis();
-                    if (now - task.timeSent > REPLICA_RESPONSE_TIMEOUT) {
-                        reportReplicaFailure(msgId, "Inconsistent responses from replicas");
-                        sequenceTasks.remove(msgId);
-                    }
+            for (Map.Entry<String, List<InetSocketAddress>> entry : groupedByResult.entrySet()) {
+                if (entry.getValue().size() >= 2) {
+                    majorityResult = entry.getKey();
+                    matched = new ArrayList<>(entry.getValue());
+                    break;
                 }
             }
-        } else {
-            System.out.println("No sequence task found for response: " + msgId);
-        }
-    }
 
-    private String validateReplicaResponses(List<UDPMessage> responses) {
-        Map<String, Integer> count = new HashMap<>();
-        for (UDPMessage resp : responses) {
-            String result = (String) resp.getPayload();
-            count.put(result, count.getOrDefault(result, 0) + 1);
-        }
-        for (Map.Entry<String, Integer> entry : count.entrySet()) {
-            if (entry.getValue() >= 2) {
-                return entry.getKey();
+            List<InetSocketAddress> mismatched = new ArrayList<>();
+            if (majorityResult != null && matched.size() != replicaResponses.size()) {
+                for (ReplicateResponse response : replicaResponses) {
+                    if (!response.result.equals(majorityResult)) {
+                        mismatched.add(response.replicaManagerEndpoint);
+                    }
+                }
+            } else if (majorityResult == null) {
+                for (ReplicateResponse response : replicaResponses) {
+                    mismatched.add(response.replicaManagerEndpoint);
+                }
             }
+            return new ReplicateResponseMetric(majorityResult, new ArrayList<>(matched), new ArrayList<>(mismatched));
         }
-        return null;
+
     }
 
-    private void sendResultToClient(UDPMessage originalRequest, String result) {
-        Map<InetAddress, Integer> endpoints = originalRequest.getEndpoints();
-        InetAddress clientAddr = endpoints.keySet().iterator().next();
-        int clientPort = endpoints.get(clientAddr);
-        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE,
-                originalRequest.getAction(), 0, endpoints, result);
-        sendUDPMessage(msg, clientAddr, clientPort);
-        System.out.println("Sent final result to client: " + result);
+    private record ReplicateResponseMetric(String majorityResult, ArrayList<InetSocketAddress> matchedInetSocketAddress,
+                                           ArrayList<InetSocketAddress> errorInetSocketAddress) {
     }
 
-    private void checkAndResendMessages() {
-        long now = System.currentTimeMillis();
-        for (Map.Entry<String, SentMessage> entry : sentMessages.entrySet()) {
-            SentMessage sm = entry.getValue();
-            if (now - sm.timeSent >= ACK_TIMEOUT) {
-                sm.message.setRetry(sm.message.getRetry() + 1);
-                sendUDPMessage(sm.message, sequencerEndpoint.getAddress(), sequencerEndpoint.getPort());
-                sm.timeSent = now;
-                System.out.println("Resent message: " + sm.message.getMessageId() + " Retry: " + sm.message.getRetry());
-            }
-        }
-    }
+    private class ReplicateResponse {
+        final InetSocketAddress replicaManagerEndpoint;
+        final String result;
+        final long timestamp;
 
-    private void checkSequenceTasks() {
-        long now = System.currentTimeMillis();
-        for (Map.Entry<String, SequenceTask> entry : sequenceTasks.entrySet()) {
-            SequenceTask task = entry.getValue();
-            if (!task.sequencerAckReceived && now - task.timeSent >= SEQUENCER_TIMEOUT) {
-                reportSequencerFailure(task.originalRequest.getMessageId());
-                task.timeSent = now;
-            }
-            if (now - task.timeSent >= REPLICA_RESPONSE_TIMEOUT && task.replicaResponses.size() < 3) {
-                reportReplicaFailure(task.originalRequest.getMessageId(), "Incomplete replica responses");
-                sequenceTasks.remove(entry.getKey());
-            }
+        public ReplicateResponse(InetSocketAddress replicaManagerEndpoint, String result) {
+            this.replicaManagerEndpoint = replicaManagerEndpoint;
+            this.result = result;
+            this.timestamp = System.currentTimeMillis();
         }
-    }
-
-    private void reportReplicaFailure(String messageId, String reason) {
-        String report = "Replica failure for message: " + messageId + " Reason: " + reason;
-        UDPMessage failMsg = new UDPMessage(UDPMessage.MessageType.FAILURE_NOTIFICATION, messageId,
-                "ReplicaFailure", 0, getReplicaManagerEndpointsMap(), report);
-        for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-            sendUDPMessage(failMsg, rmEndpoint.getAddress(), rmEndpoint.getPort());
-        }
-        System.out.println("Reported replica failure for message: " + messageId);
     }
 
     private Map<InetAddress, Integer> getReplicaManagerEndpointsMap() {
@@ -208,47 +147,121 @@ public class FrontEnd {
         return map;
     }
 
-    private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort) {
-        try {
-            byte[] data = serialize(msg);
-            DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
-            socket.send(packet);
-        } catch (IOException e) {
-            e.printStackTrace();
+    public void start() {
+        new Thread(this::receiveLoop).start();
+        new Thread(this::sendLoop).start();
+        new Thread(this::processIncomingMessages).start();
+        new Thread(this::checkResultFound).start();
+    }
+
+    private void receiveLoop() {
+        byte[] buffer = new byte[4096];
+        while (true) {
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+            try {
+                socket.receive(packet);
+                UDPMessage msg = new UDPMessage(packet.getData(), packet.getLength());
+                recieveMessage.add(new Message(msg, new InetSocketAddress(packet.getAddress(), packet.getPort())));
+            } catch (IOException e) {
+                System.out.println("IOException in Front-End receiveLoop " + e.getMessage());
+            }
         }
     }
 
-    private byte[] serialize(UDPMessage msg) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(baos);
-        oos.writeObject(msg);
-        oos.flush();
-        return baos.toByteArray();
-    }
-
-    private UDPMessage deserialize(byte[] data, int length) throws IOException {
-        ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
-        try (ObjectInputStream ois = new ObjectInputStream(bais)) {
-            return (UDPMessage) ois.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new IOException("Class not found during deserialization", e);
+    private void sendLoop() {
+        while (true) {
+            try {
+                SendMessage msg = sentMessages.take(); // TODO : Can't use take
+                if (!msg.isSend) {
+                    taskExecutor.submit(() -> {
+                          // TODO : Send Message
+//                        Map<InetAddress, Integer> endpoints = new HashMap<>();
+//                        endpoints.put(InetAddress.getByName(Dotenv.load().get("FE_SERVICE_IP")), Integer.parseInt(Dotenv.load().get("FE_SERVICE_PORT")));
+//                        UDPMessage udpMessage = new UDPMessage(UDPMessage.MessageType.CLIENT_REQUEST, msg.split("::")[0], 0, endpoints, msg);
+//                        byte[] buffer = udpMessage.serialize();
+//                        InetAddress receiverAddress = InetAddress.getByName(Dotenv.load().get("FE_IP"));
+//                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, Integer.parseInt(Dotenv.load().get("FE_PORT")));
+//                        socket.send(packet);
+                    });
+                } else if ((System.currentTimeMillis() - msg.timeSent) > Integer.parseInt(Dotenv.load().get("ACK_TIMEOUT"))) {
+                    taskExecutor.submit(() -> {
+                        // TODO : resend
+                    });
+                }
+            } catch (Exception e) {
+                e.printStackTrace(System.err);
+            }
         }
     }
 
-    public void sendClientRequestToSequencer(UDPMessage clientRequest) {
-        sequenceTasks.put(clientRequest.getMessageId(), new SequenceTask(clientRequest, System.currentTimeMillis()));
-        UDPMessage sequencerMsg = new UDPMessage(UDPMessage.MessageType.REQUEST, clientRequest.getMessageId(),
-                clientRequest.getAction(), 0, clientRequest.getEndpoints(), clientRequest.getPayload());
-        sendUDPMessage(sequencerMsg, sequencerEndpoint.getAddress(), sequencerEndpoint.getPort());
-        sentMessages.put(sequencerMsg.getMessageId(), new SentMessage(sequencerMsg, System.currentTimeMillis()));
-        System.out.println("Sent client request to Sequencer: " + sequencerMsg);
+    private void processIncomingMessages() {
+        while (true) {
+            try {
+                Message msg = recieveMessage.take(); // TODO : Can't use take
+                taskExecutor.submit(() -> handleUDPMessage(msg));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private void checkResultFound() {
+        while (true) {
+            try {
+                ClientRequest cr = sequencerQueue.take(); // TODO : Can't use take
+                taskExecutor.submit(() -> {
+                    ReplicateResponseMetric metric = cr.analyzeResponses();
+                    // TODO : Do the work
+                });
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private void handleAck(String msgId) {
+        sentMessages.removeIf(msgId); // TODO: Fix me
+    }
+
+    private void handleUDPMessage(Message msg) {
+        switch (msg.message.getMessageType()) {
+            case ACK:
+                handleAck(msg.message.getMessageId());
+                break;
+            case RESPONSE:
+                sequencerQueue.add(new ClientRequest(msg.message.getSequenceNumber()));
+                break;
+            case RESULT:
+                ClientRequest cr = sequencerQueue.stream().filter(req -> req.sequenceNumber == msg.message.getSequenceNumber()).findFirst().orElse(null);
+                if (cr != null) {
+                    if (msg.message.getPayload() instanceof String str) {
+                        cr.addResponse(new ReplicateResponse(msg.endpoint, str));
+                    }
+                } else {
+                    System.out.println("Sequencer number not found! Issue with sequencer");
+                }
+                break;
+            case CLIENT_REQUEST:
+                // TODO : Add to Sent Message
+                break;
+            default:
+                System.out.println("Received unknown message type: " + msg);
+        }
     }
 
     public static void main(String[] args) throws Exception {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("\n[Shutdown] Cleaning up resources...");
+            taskExecutor.shutdown();
+            try {
+                if (!taskExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    taskExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                taskExecutor.shutdownNow();
+            }
+
             if (log != null) {
-                log.log("Program is shutting down...");
                 log.shutdown();
             }
             System.out.println("[Shutdown] Cleanup complete.");
@@ -263,11 +276,5 @@ public class FrontEnd {
 
         FrontEnd fe = new FrontEnd(sequencerEndpoint, rmEndpoints);
         fe.start();
-
-//        Map<InetAddress, Integer> clientEndpoint = new HashMap<>();
-//        clientEndpoint.put(InetAddress.getByName(Dotenv.load().get("SEQUENCER_PORT")), 8000);
-//        UDPMessage clientReq = new UDPMessage(UDPMessage.MessageType.REQUEST,
-//                "purchaseShare", 0, clientEndpoint, "Buy 5 shares of NYKM100925");
-//        fe.sendClientRequestToSequencer(clientReq);
     }
 }

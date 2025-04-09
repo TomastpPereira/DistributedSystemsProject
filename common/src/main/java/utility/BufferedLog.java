@@ -97,10 +97,6 @@ public class BufferedLog implements Serializable {
         }
     }
 
-    public void log(String message) {
-        logEntry("System", "N/A", RequestResponseStatus.SUCCESS, "N/A", message);
-    }
-
     public void shutdown() {
         running = false;
         writerThread.interrupt();

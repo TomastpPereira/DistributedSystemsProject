@@ -6,6 +6,7 @@ import javax.xml.namespace.QName;
 import javax.xml.ws.Service;
 import java.net.URL;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 public class Client {
 
@@ -55,17 +56,17 @@ public class Client {
     }
 
     public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("\n[Shutdown] Cleaning up resources...");
             if (log != null) {
-                log.log("Program is shutting down...");
                 log.shutdown();
             }
+            scanner.close();
             System.out.println("[Shutdown] Cleanup complete.");
         }));
 
         System.out.println("Welcome to the Distributed Market System");
-        Scanner scanner = new Scanner(System.in);
         System.out.print("Enter your User ID (e.g., ADMNYK1000 or BUYLON1000): ");
         userID = scanner.nextLine().trim();
 
@@ -78,6 +79,11 @@ public class Client {
         String fileName = userID.startsWith("ADM") ? "AdminClient" : "BuyerClient";
         log = new BufferedLog("logs/", fileName, userID);
 
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            log.logEntry("Client", "Shutdown", BufferedLog.RequestResponseStatus.SUCCESS, "N/A", "Client exiting.");
+            log.shutdown();
+        }));
+
         if (userID.startsWith("ADM")) {
             runAdminClient(scanner);
         } else if (userID.startsWith("BUY")) {
@@ -85,9 +91,6 @@ public class Client {
         } else {
             System.out.println("Invalid user type (must start with ADM or BUY)");
         }
-
-        scanner.close();
-        log.shutdown();
     }
 
     private static void runAdminClient(Scanner scanner) {
@@ -126,7 +129,7 @@ public class Client {
 
                     assert stub != null;
                     String response = stub.addShare(shareID, shareType, capacity);
-                    log.log(response);
+                    log.logEntry("Client", "addShare", BufferedLog.RequestResponseStatus.SUCCESS, response, "Add share requested");
                     System.out.println(response);
                 }
                 case 2 -> {
@@ -138,7 +141,7 @@ public class Client {
 
                     assert stub != null;
                     String response = stub.removeShare(shareID, shareType);
-                    log.log(response);
+                    log.logEntry("Client", "removeShare", BufferedLog.RequestResponseStatus.SUCCESS, response, "Remove share requested");
                     System.out.println(response);
                 }
                 case 3 -> {
@@ -146,9 +149,8 @@ public class Client {
                     System.out.print("Enter Share Type: ");
                     String shareType = scanner.nextLine();
 
-                    assert stub != null;
                     String availability = stub.listShareAvailability(shareType);
-                    log.log("List Share Availability: " + shareType);
+                    log.logEntry("Client", "listShareAvailability", BufferedLog.RequestResponseStatus.SUCCESS, availability, "Listing shares");
                     System.out.println(availability);
                 }
                 case 4, 5, 7 -> runSharedTransaction(scanner, choice);
@@ -156,7 +158,7 @@ public class Client {
                     stub = connectToServer(userID);
                     assert stub != null;
                     String owned = stub.getShares(userID);
-                    log.log("Owned Shares: " + owned);
+                    log.logEntry("Client", "getShares", BufferedLog.RequestResponseStatus.SUCCESS, owned, "Get owned shares");
                     System.out.println(owned);
                 }
                 case 8 -> {
@@ -188,7 +190,7 @@ public class Client {
                     Market stub = connectToServer(userID);
                     assert stub != null;
                     String owned = stub.getShares(userID);
-                    log.log("Owned Shares: " + owned);
+                    log.logEntry("Client", "getShares", BufferedLog.RequestResponseStatus.SUCCESS, owned, "Get owned shares");
                     System.out.println(owned);
                 }
                 case 5 -> {
@@ -221,7 +223,7 @@ public class Client {
                     System.out.print("Enter Date (DDMMYY): ");
                     String date = scanner.nextLine();
                     String res = marketStub.purchaseShare(userID, shareID, shareType, qty, date);
-                    log.log(res);
+                    log.logEntry("Client", "purchaseShare", BufferedLog.RequestResponseStatus.SUCCESS, res, "Purchase share");
                     System.out.println(res);
                 }
                 case 2 -> {
@@ -229,7 +231,7 @@ public class Client {
                     int qty = scanner.nextInt();
                     scanner.nextLine();
                     String res = marketStub.sellShare(userID, shareID, qty);
-                    log.log(res);
+                    log.logEntry("Client", "sellShare", BufferedLog.RequestResponseStatus.SUCCESS, res, "Sell share");
                     System.out.println(res);
                 }
                 case 4, 7 -> {
@@ -240,12 +242,13 @@ public class Client {
                     System.out.print("Enter New Share Type: ");
                     String newShareType = scanner.nextLine();
                     String res = marketStub.swapShares(userID, shareID, shareType, newShareID, newShareType);
-                    log.log(res);
+                    log.logEntry("Client", "swapShares", BufferedLog.RequestResponseStatus.SUCCESS, res, "Swap shares");
                     System.out.println(res);
                 }
             }
         } catch (Exception e) {
-            log.log("Transaction failed: " + e.getMessage());
+            log.logEntry("Client", "Transaction", BufferedLog.RequestResponseStatus.FAILURE, "N/A", "Transaction failed: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

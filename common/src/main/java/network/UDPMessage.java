@@ -1,6 +1,6 @@
 package network;
 
-import java.io.Serializable;
+import java.io.*;
 import java.net.InetAddress;
 import java.util.Map;
 import java.util.UUID;
@@ -27,23 +27,18 @@ public class UDPMessage implements Serializable {
         SYNC,
         RESTART,
         CRASH_NOTIFICATION,
-        INCORRECT_RESULT_NOTIFICATION
+        INCORRECT_RESULT_NOTIFICATION,
+        RESULT,
+        CLIENT_REQUEST
     }
 
     private String messageId;
-
     private MessageType messageType;
-
     private String action;
-
     private int retry;
-
     private Map<InetAddress, Integer> endpoints;
-
     private Object payload;
-
     private long timestamp;
-
     private long sequenceNumber;
 
     public UDPMessage(MessageType messageType, String action, int retry,
@@ -67,6 +62,30 @@ public class UDPMessage implements Serializable {
         this.payload = payload;
         this.timestamp = System.currentTimeMillis();
         this.sequenceNumber = sequenceNumber;
+    }
+
+    public UDPMessage(byte[] data, int length) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
+        try (ObjectInputStream ois = new ObjectInputStream(bais)) {
+            UDPMessage msg = (UDPMessage) ois.readObject();
+            this.messageId = msg.messageId;
+            this.messageType = msg.messageType;
+            this.action = msg.action;
+            this.retry = msg.retry;
+            this.endpoints = msg.endpoints;
+            this.payload = msg.payload;
+            this.timestamp = msg.timestamp;
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Class not found during deserialization", e);
+        }
+    }
+
+    public byte[] serialize() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(this);
+        oos.flush();
+        return baos.toByteArray();
     }
 
     public String getMessageId() {
