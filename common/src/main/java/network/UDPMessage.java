@@ -28,8 +28,8 @@ public class UDPMessage implements Serializable {
         RESTART,
         CRASH_NOTIFICATION,
         INCORRECT_RESULT_NOTIFICATION,
-        RESULT,
-        CLIENT_REQUEST
+        RESULT_TIMEOUT,
+        RESULT
     }
 
     private String messageId;
@@ -86,6 +86,10 @@ public class UDPMessage implements Serializable {
         oos.writeObject(this);
         oos.flush();
         return baos.toByteArray();
+    }
+
+    public void addEndpoint(InetAddress address, int port) {
+        endpoints.put(address, port);
     }
 
     public String getMessageId() {

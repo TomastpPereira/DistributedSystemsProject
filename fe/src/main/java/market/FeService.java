@@ -8,7 +8,7 @@ import javax.xml.ws.Endpoint;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @WebService(endpointInterface = "market.Market")
@@ -20,9 +20,9 @@ public class FeService implements Market {
             String msg,
             DatagramSocket socket) {
         try {
-            Map<InetAddress, Integer> endpoints = new HashMap<>();
+            Map<InetAddress, Integer> endpoints = new LinkedHashMap<>();
             endpoints.put(InetAddress.getByName(Dotenv.load().get("FE_SERVICE_IP")), Integer.parseInt(Dotenv.load().get("FE_SERVICE_PORT")));
-            UDPMessage udpMessage = new UDPMessage(UDPMessage.MessageType.CLIENT_REQUEST, msg.split("::")[0], 0, endpoints, msg);
+            UDPMessage udpMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.split("::")[0], 0, endpoints, msg);
             byte[] buffer = udpMessage.serialize();
             InetAddress receiverAddress = InetAddress.getByName(Dotenv.load().get("FE_IP"));
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, Integer.parseInt(Dotenv.load().get("FE_PORT")));

@@ -23,13 +23,13 @@ public class FrontEnd {
     private static long REPLICA_RESPONSE_TIMEOUT;
 
     public FrontEnd(InetSocketAddress sequencerEndpoint, List<InetSocketAddress> replicaManagerEndpoints) throws SocketException {
+        log = new BufferedLog("logs/", "Front-End", "Front-End");
         this.sequencerEndpoint = sequencerEndpoint;
         this.replicaManagerEndpoints = replicaManagerEndpoints;
-        this.socket = new DatagramSocket(fePort);
         fePort = Integer.parseInt(Dotenv.load().get("FE_PORT"));
         ACK_TIMEOUT = Long.parseLong(Dotenv.load().get("ACK_TIMEOUT"));
         REPLICA_RESPONSE_TIMEOUT = Long.parseLong(Dotenv.load().get("REPLICA_RESPONSE_TIMEOUT"));
-        log = new BufferedLog("logs/", "Front-End", "Front-End");
+        this.socket = new DatagramSocket(fePort);
     }
 
     private class Message {
@@ -57,8 +57,17 @@ public class FrontEnd {
             this.isSend = false;
         }
 
+        public SendMessage(Message message) {
+            super(message.message, message.endpoint);
+            this.isSend = false;
+        }
+
         public void sent() {
             this.isSend = true;
+        }
+
+        public void reSend() {
+            this.isSend = false;
         }
 
         public boolean isSend() {
@@ -68,37 +77,74 @@ public class FrontEnd {
 
     private class ClientRequest {
         final Long sequenceNumber;
-        final long timestamp;
-        ArrayList<ReplicateResponse> replicaResponses;
+        long timestamp;
+        HashMap<InetAddress, String> replicaResponses;
+        boolean isTimeOut = false;
+        boolean isSendToClient = false;
+        boolean isSendToServer = false;
+        final UDPMessage originalMessage;
+        final InetSocketAddress clientInetSocketAddress;
 
-        public ClientRequest(Long sequenceNumber) {
+        public ClientRequest(Long sequenceNumber, UDPMessage originalMessage, InetSocketAddress endpoint) {
             this.sequenceNumber = sequenceNumber;
             this.timestamp = System.currentTimeMillis();
-            this.replicaResponses = new ArrayList<>();
+            this.replicaResponses = new HashMap<>();
+            this.originalMessage = originalMessage;
+            this.clientInetSocketAddress = endpoint;
         }
 
-        public void addResponse(ReplicateResponse response) {
+        public void addResponse(InetAddress address, String response) {
             if (!isFull()) {
-                replicaResponses.add(response);
+                if (replicaResponses.containsKey(address)) {
+                    replicaResponses.replace(address, response);
+                } else {
+                    replicaResponses.put(address, response);
+                }
+                if (isSendToClient) {
+                    isSendToClient = false;
+                }
+                if (System.currentTimeMillis() - this.timestamp > Long.parseLong(Dotenv.load().get("REPLICA_RESPONSE_TIMEOUT"))) {
+                    this.timestamp = System.currentTimeMillis();
+                }
             }
         }
 
-        private boolean isFull() {
+        public boolean isFull() {
             return replicaResponses.size() == 3;
         }
 
+        private boolean isTimeOut() {
+            return this.isTimeOut;
+        }
+
+        private void timeOut() {
+            this.isTimeOut = true;
+        }
+
+        public void sendToClient() {
+            this.isSendToClient = true;
+        }
+
+        public void sendToServer() {
+            this.isSendToServer = true;
+        }
+
         public ReplicateResponseMetric analyzeResponses() {
-            Map<String, List<InetSocketAddress>> groupedByResult = new HashMap<>();
-            for (ReplicateResponse response : replicaResponses) {
+            Map<String, List<InetAddress>> groupedByResult = new HashMap<>();
+
+            for (Map.Entry<InetAddress, String> entry : replicaResponses.entrySet()) {
+                String result = entry.getValue();
+                InetAddress address = entry.getKey();
+
                 groupedByResult
-                        .computeIfAbsent(response.result, k -> new ArrayList<>())
-                        .add(response.replicaManagerEndpoint);
+                        .computeIfAbsent(result, k -> new ArrayList<>())
+                        .add(address);
             }
 
             String majorityResult = null;
-            List<InetSocketAddress> matched = new ArrayList<>();
+            List<InetAddress> matched = new ArrayList<>();
 
-            for (Map.Entry<String, List<InetSocketAddress>> entry : groupedByResult.entrySet()) {
+            for (Map.Entry<String, List<InetAddress>> entry : groupedByResult.entrySet()) {
                 if (entry.getValue().size() >= 2) {
                     majorityResult = entry.getKey();
                     matched = new ArrayList<>(entry.getValue());
@@ -106,37 +152,23 @@ public class FrontEnd {
                 }
             }
 
-            List<InetSocketAddress> mismatched = new ArrayList<>();
+            List<InetAddress> mismatched = new ArrayList<>();
             if (majorityResult != null && matched.size() != replicaResponses.size()) {
-                for (ReplicateResponse response : replicaResponses) {
-                    if (!response.result.equals(majorityResult)) {
-                        mismatched.add(response.replicaManagerEndpoint);
+                for (Map.Entry<InetAddress, String> entry : replicaResponses.entrySet()) {
+                    if (!entry.getValue().equals(majorityResult)) {
+                        mismatched.add(entry.getKey());
                     }
                 }
             } else if (majorityResult == null) {
-                for (ReplicateResponse response : replicaResponses) {
-                    mismatched.add(response.replicaManagerEndpoint);
-                }
+                mismatched.addAll(replicaResponses.keySet());
             }
-            return new ReplicateResponseMetric(majorityResult, new ArrayList<>(matched), new ArrayList<>(mismatched));
-        }
 
+            return new ReplicateResponseMetric(majorityResult, matched, mismatched);
+        }
     }
 
-    private record ReplicateResponseMetric(String majorityResult, ArrayList<InetSocketAddress> matchedInetSocketAddress,
-                                           ArrayList<InetSocketAddress> errorInetSocketAddress) {
-    }
-
-    private class ReplicateResponse {
-        final InetSocketAddress replicaManagerEndpoint;
-        final String result;
-        final long timestamp;
-
-        public ReplicateResponse(InetSocketAddress replicaManagerEndpoint, String result) {
-            this.replicaManagerEndpoint = replicaManagerEndpoint;
-            this.result = result;
-            this.timestamp = System.currentTimeMillis();
-        }
+    private record ReplicateResponseMetric(String majorityResult, List<InetAddress> matchedInetAddress,
+                                           List<InetAddress> errorInetAddress) {
     }
 
     private Map<InetAddress, Integer> getReplicaManagerEndpointsMap() {
@@ -145,6 +177,18 @@ public class FrontEnd {
             map.put(addr.getAddress(), addr.getPort());
         }
         return map;
+    }
+
+    private void sendMessage(SendMessage sendMessage) {
+        try {
+            byte[] buffer = sendMessage.message.serialize();
+            InetAddress receiverAddress = sendMessage.endpoint.getAddress();
+            int receiverPort = sendMessage.endpoint.getPort();
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, receiverPort);
+            socket.send(packet);
+        } catch (Exception e) {
+            e.printStackTrace(System.err);
+        }
     }
 
     public void start() {
@@ -171,22 +215,20 @@ public class FrontEnd {
     private void sendLoop() {
         while (true) {
             try {
-                SendMessage msg = sentMessages.take(); // TODO : Can't use take
-                if (!msg.isSend) {
-                    taskExecutor.submit(() -> {
-                          // TODO : Send Message
-//                        Map<InetAddress, Integer> endpoints = new HashMap<>();
-//                        endpoints.put(InetAddress.getByName(Dotenv.load().get("FE_SERVICE_IP")), Integer.parseInt(Dotenv.load().get("FE_SERVICE_PORT")));
-//                        UDPMessage udpMessage = new UDPMessage(UDPMessage.MessageType.CLIENT_REQUEST, msg.split("::")[0], 0, endpoints, msg);
-//                        byte[] buffer = udpMessage.serialize();
-//                        InetAddress receiverAddress = InetAddress.getByName(Dotenv.load().get("FE_IP"));
-//                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, Integer.parseInt(Dotenv.load().get("FE_PORT")));
-//                        socket.send(packet);
-                    });
-                } else if ((System.currentTimeMillis() - msg.timeSent) > Integer.parseInt(Dotenv.load().get("ACK_TIMEOUT"))) {
-                    taskExecutor.submit(() -> {
-                        // TODO : resend
-                    });
+                for (SendMessage msg : sentMessages) {
+                    if (!msg.isSend) {
+                        taskExecutor.submit(() -> {
+                            if (msg.message.getMessageType() == UDPMessage.MessageType.ACK) {
+                                sendMessage(msg);
+                                sentMessages.removeIf(m -> m.message.getMessageId().equals(msg.message.getMessageId()));
+                            } else {
+                                sendMessage(msg);
+                                msg.sent();
+                            }
+                        });
+                    } else if ((System.currentTimeMillis() - msg.timeSent) > ACK_TIMEOUT) {
+                        taskExecutor.submit(msg::reSend);
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace(System.err);
@@ -197,7 +239,7 @@ public class FrontEnd {
     private void processIncomingMessages() {
         while (true) {
             try {
-                Message msg = recieveMessage.take(); // TODO : Can't use take
+                Message msg = recieveMessage.take();
                 taskExecutor.submit(() -> handleUDPMessage(msg));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -208,11 +250,46 @@ public class FrontEnd {
     private void checkResultFound() {
         while (true) {
             try {
-                ClientRequest cr = sequencerQueue.take(); // TODO : Can't use take
-                taskExecutor.submit(() -> {
-                    ReplicateResponseMetric metric = cr.analyzeResponses();
-                    // TODO : Do the work
-                });
+                for (ClientRequest cr : sequencerQueue) {
+                    if ((System.currentTimeMillis() - cr.timestamp) < REPLICA_RESPONSE_TIMEOUT && !cr.isTimeOut()) {
+                        taskExecutor.submit(() -> {
+                            ReplicateResponseMetric metric = cr.analyzeResponses();
+                            if (metric.matchedInetAddress.size() >= 3 && cr.isSendToClient) {
+                                sequencerQueue.removeIf(c -> Objects.equals(c.sequenceNumber, cr.sequenceNumber));
+                            } else if (metric.matchedInetAddress.size() >= 2 && !cr.isSendToClient) {
+                                cr.sendToClient();
+                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                                sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
+                            } else if (!metric.errorInetAddress.isEmpty() && cr.isSendToClient) {
+                                cr.sendToServer();
+                                StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
+                                for (InetAddress addr : metric.errorInetAddress) {
+                                    errorMsg.append(addr.getHostAddress()).append("::");
+                                }
+                                int length = errorMsg.length();
+                                if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
+                                    errorMsg.setLength(length - 2);
+                                }
+                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), errorMsg.toString());
+                                for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                    sentMessages.add(new SendMessage(msg, rmEndpoint));
+                                }
+                            }
+                        });
+                    } else if (!cr.isTimeOut() && !cr.isFull()) {
+                        cr.timeOut();
+                        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                        for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                            sentMessages.add(new SendMessage(msg, rmEndpoint));
+                        }
+                    } else {
+                        cr.timeOut();
+                        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESULT_TIMEOUT, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                        for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                            sentMessages.add(new SendMessage(msg, rmEndpoint));
+                        }
+                    }
+                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -220,7 +297,7 @@ public class FrontEnd {
     }
 
     private void handleAck(String msgId) {
-        sentMessages.removeIf(msgId); // TODO: Fix me
+        recieveMessage.removeIf(msg -> Objects.equals(msg.message.getMessageId(), msgId));
     }
 
     private void handleUDPMessage(Message msg) {
@@ -229,20 +306,31 @@ public class FrontEnd {
                 handleAck(msg.message.getMessageId());
                 break;
             case RESPONSE:
-                sequencerQueue.add(new ClientRequest(msg.message.getSequenceNumber()));
+                sequencerQueue.add(new ClientRequest(msg.message.getSequenceNumber(), msg.message, msg.endpoint));
                 break;
             case RESULT:
+                msg.message.setMessageType(UDPMessage.MessageType.ACK);
+                sentMessages.add(new SendMessage(msg));
                 ClientRequest cr = sequencerQueue.stream().filter(req -> req.sequenceNumber == msg.message.getSequenceNumber()).findFirst().orElse(null);
                 if (cr != null) {
                     if (msg.message.getPayload() instanceof String str) {
-                        cr.addResponse(new ReplicateResponse(msg.endpoint, str));
+                        cr.addResponse(msg.endpoint.getAddress(), str);
                     }
                 } else {
                     System.out.println("Sequencer number not found! Issue with sequencer");
                 }
                 break;
-            case CLIENT_REQUEST:
-                // TODO : Add to Sent Message
+            case REQUEST:
+                try {
+                    msg.message.addEndpoint(InetAddress.getByName(Dotenv.load().get("FE_IP")), Integer.parseInt(Dotenv.load().get("FE_PORT")));
+                    msg.message.setMessageType(UDPMessage.MessageType.ACK);
+                    sentMessages.add(new SendMessage(msg));
+
+                    UDPMessage rmMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.message.getAction(), 0, msg.message.getEndpoints(), msg.message.getPayload());
+                    sentMessages.add(new SendMessage(rmMessage, new InetSocketAddress(InetAddress.getByName(Dotenv.load().get("SEQUENCER_IP")), Integer.parseInt(Dotenv.load().get("SEQUENCER_PORT")))));
+                } catch (Exception e) {
+                    System.out.println("Exception in Front-End handleUDPMessage " + e.getMessage());
+                }
                 break;
             default:
                 System.out.println("Received unknown message type: " + msg);
