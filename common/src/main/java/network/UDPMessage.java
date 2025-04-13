@@ -25,7 +25,7 @@ public class UDPMessage implements Serializable {
         PONG,
         HELLO,
         SYNC,
-        RESTART,
+        CLEAR_VOTE,
         CRASH_NOTIFICATION,
         INCORRECT_RESULT_NOTIFICATION,
         RESULT_TIMEOUT,
@@ -49,6 +49,16 @@ public class UDPMessage implements Serializable {
         this.retry = retry;
         this.endpoints = endpoints;
         this.payload = payload;
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    public UDPMessage(UDPMessage toCopy){
+        this.messageType = toCopy.messageType;
+        this.messageId = toCopy.messageId;
+        this.action = toCopy.action;
+        this.retry = toCopy.retry;
+        this.endpoints = toCopy.endpoints;
+        this.payload = toCopy.payload;
         this.timestamp = System.currentTimeMillis();
     }
 

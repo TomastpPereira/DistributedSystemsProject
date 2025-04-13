@@ -79,6 +79,9 @@ public class ReplicaManager {
         sendHello();
     }
 
+    /**
+     * Listener for UDP Messages to the RM. Infinite receive loop.
+     */
     public void startListener(){
         new Thread(()-> {
             try (DatagramSocket socket = new DatagramSocket(this.RM_PORT)){
@@ -89,7 +92,11 @@ public class ReplicaManager {
 
                     UDPMessage msg = deserialize(packet.getData(), packet.getLength());
 
-                    // TODO: SEND ACK
+                    // Copy and change to ACK type to resend
+                    UDPMessage ackMessage = new UDPMessage(msg);
+                    ackMessage.setMessageType(UDPMessage.MessageType.ACK);
+                    sendUDPMessage(ackMessage, packet.getAddress(), packet.getPort());
+
                     handleMessage(msg);
                 }
             } catch (Exception e){
@@ -98,6 +105,13 @@ public class ReplicaManager {
         }).start();
     }
 
+
+    /**
+     * Given the contents of the UDP Message, will prompt different actions from the RM.
+     * Switch case based on the message type. Requests originating from the client will always be of type REQUEST.
+     *
+     * @param msg The UDP message which is being handled.
+     */
     private void handleMessage(UDPMessage msg){
         switch(msg.getMessageType()){
             case REQUEST:
@@ -128,9 +142,6 @@ public class ReplicaManager {
                 int port = msg.getEndpoints().get(address);
                 sendUDPMessage(pong, address, port);
                 break;
-            case RESTART:
-                restart();
-                break;
             case HELLO:
                 sendData(msg.getEndpoints());
                 break;
@@ -138,10 +149,21 @@ public class ReplicaManager {
                 ReplicaStateSnapshot snapshot = (ReplicaStateSnapshot) msg.getPayload();
                 loadData(snapshot);
                 break;
+            case CLEAR_VOTE:
+                String toClear = (String) msg.getPayload();
+                votesForReplica.put(toClear, new HashSet<>());
+                failureCount.put(toClear, 0);
+                break;
 
         }
     }
 
+    /**
+     * Upon receiving a notification from the Front End that a response was incorrect, will update the failure count for that RM.
+     * Once 3 failures have occurred, the RMs will vote for a restart.
+     *
+     * @param incorrectRM  The name of the RM which sent the incorrect result.
+     */
     private void processFailure(String incorrectRM) {
 
         int numFails = failureCount.get(incorrectRM);
@@ -156,6 +178,13 @@ public class ReplicaManager {
 
     }
 
+    /**
+     * Helper for sending UDP messages
+     *
+     * @param msg The UDP Message being sent
+     * @param destAddress   The IP of the receiver
+     * @param destPort      The port of the receiver
+     */
     private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort){
         try {
             byte[] data = serialize(msg);
@@ -166,6 +195,14 @@ public class ReplicaManager {
             e.printStackTrace();
         }
     }
+
+    /**
+     * Helper for serializing messages before sending.
+     *
+     * @param msg The UDP message to serialize
+     * @return The byte array of the message
+     * @throws IOException  When the Output stream fails.
+     */
     private byte[] serialize(UDPMessage msg) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ObjectOutputStream oos = new ObjectOutputStream(baos);
@@ -173,6 +210,14 @@ public class ReplicaManager {
         oos.flush();
         return baos.toByteArray();
     }
+
+    /**
+     * Helper to deserialize a UDP Message
+     * @param data The byte array that has been received
+     * @param length    The length of the byte array
+     * @return  The UDP message which has been received
+     * @throws IOException  If class is not found during deserialization
+     */
     private UDPMessage deserialize(byte[] data, int length) throws IOException {
         ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
         try (ObjectInputStream ois = new ObjectInputStream(bais)) {
@@ -182,6 +227,12 @@ public class ReplicaManager {
         }
     }
 
+    /**
+     * When the RM received a Request from the sequencer, this method will be called.
+     * If the sequence number of the message matches the expected one, it will be processed right away.
+     * If the sequence number is ahead of the expected, it will be put into the holdback queue to ensure total ordering.
+     * @param msg The UDP message containing the request.
+     */
     private void handleSequencedRequest(UDPMessage msg){
         synchronized (this){
 
@@ -199,9 +250,11 @@ public class ReplicaManager {
                 }
 
             } else if (sequenceNum > expectedSequence) {
-                holdbackQueue.put(sequenceNum, msg);
+                // Avoids duplicates in the holdback queue
+                if (!holdbackQueue.containsKey(sequenceNum))
+                    holdbackQueue.put(sequenceNum, msg);
             } else {
-                //TODO: handle an old message
+                //If an old message was received, it was either already sent or the FE will notify.
             }
 
         }
@@ -239,9 +292,17 @@ public class ReplicaManager {
         sendUDPMessage(forwardMessage, address, marketPort);
     }
 
+    /**
+     * Sends a ping to the given RM to ensure that it has not crashed.
+     * The sender will wait for 5000ms to receive a response, and will otherwise suspect a crash.
+     *
+     * @param replicaName   The name of the crashed RM. Used for voting purposes
+     * @param ip            IP of the crashed RM.
+     * @param port          Port of the crashed RM.
+     */
     public void sendPing(String replicaName, String ip, int port){
         try (DatagramSocket socket = new DatagramSocket()){
-            socket.setSoTimeout(5000); // TODO: Adjust time
+            socket.setSoTimeout(5000);
 
             InetAddress address = InetAddress.getByName(ip);
 
@@ -265,6 +326,13 @@ public class ReplicaManager {
         }
     }
 
+    /**
+     * Handles the voting for restart of an RM.
+     * This method will locally add the vote to the set of votes for the crashed replica.
+     * It will then send the vote to the other RMs, avoiding the one that had crashed.
+     *
+     * @param crashedName The name of the crashed RM, used of the keys of the map.
+     */
     private void voteForRestart(String crashedName) {
 
         // Adding local vote
@@ -291,29 +359,55 @@ public class ReplicaManager {
         }
     }
 
+    /**
+     * Handles a vote received from another RM.
+     * @param crashed   Name of the crashed RM.
+     * @param voter     Name of the RM sending the vote.
+     */
     private void handleVote(String crashed, String voter){
-        Set<String> currentSet = votesForReplica.get(crashed);
+        Set<String> currentSet = votesForReplica.getOrDefault(crashed, new HashSet<>());
         currentSet.add(voter);
 
         int totalVotes = currentSet.size();
         int majority = (RM_PORTS.size() / 2) + 1;
 
-        // Send a restart if majority is reached
+        // Restart if majority is reached - Can't be done with a message
+        // This implementation requires RMs to be on the same machine
         if(totalVotes >= majority){
-            UDPMessage restartMessage = new UDPMessage(UDPMessage.MessageType.RESTART, null, 0, null, null);
-            InetAddress address;
-            int port = RM_PORTS.get(crashed);
-            try {
-                address = InetAddress.getByName(RM_IP);
-            } catch (UnknownHostException e) {
-                throw new RuntimeException(e);
-            }
+            // Assigns 1 RM which will call to restart based on the voters
+            String responsibleRM = currentSet.stream().sorted().findFirst().orElse(null);
+            if (responsibleRM.equals(RM_NAME)) {
 
-            sendUDPMessage(restartMessage, address, port);
+                // Tell others to clear voting for the restarted RM
+                UDPMessage clearVotes = new UDPMessage(UDPMessage.MessageType.CLEAR_VOTE, null, 0, null, crashed);
+                try {
+                    for (Map.Entry<String, Integer> entry : RM_PORTS.entrySet()) {
+                        String otherRM = entry.getKey();
+                        int otherPort = entry.getValue();
+
+                        if (!otherRM.equals(RM_NAME)) { // Don't send to self
+                            InetAddress address = InetAddress.getByName("localhost");
+
+                            sendUDPMessage(clearVotes, address, otherPort);
+
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                restart(crashed);
+            }
         }
 
     }
 
+    /**
+     * Sends the data held by this RM to the RM that has requested it.
+     * This is used to recover from failure and return to the current state.
+     *
+     * @param endpoints The IP and Port info to send the data to
+     */
     private void sendData(Map<InetAddress, Integer> endpoints){
 
         try {
@@ -363,6 +457,11 @@ public class ReplicaManager {
 
     }
 
+    /**
+     * Loads the data received from another RM.
+     *
+     * @param snapshot A ReplicaStateSnapshot object which hold all the data to be loaded.
+     */
     private void loadData(ReplicaStateSnapshot snapshot){
         try {
             for (String market: markets.keySet()){
@@ -380,7 +479,10 @@ public class ReplicaManager {
         }
     }
 
-    private void restart(){
+    /**
+     * Restarts the RM.
+     */
+    private void restart(String crashed){
         try {
             String javaBin = System.getProperty("java.home") + "/bin/java";
 
@@ -388,25 +490,29 @@ public class ReplicaManager {
 
             String className = this.getClass().getName();
 
+            int port = RM_PORTS.get(crashed);
+
             ProcessBuilder builder = new ProcessBuilder(
                     javaBin,
                     "-cp", classPath,
                     className,
                     this.RM_IP,
-                    String.valueOf(this.RM_PORT),
-                    this.RM_NAME
+                    String.valueOf(port),
+                    crashed
             );
 
             builder.inheritIO();
             builder.start();
-
-            System.exit(0);
         } catch (Exception e){
             e.printStackTrace();
         }
 
     }
 
+    /**
+     * Part of the startup process of an RM.
+     * It will send a Hello message to the other RMs in order to get the current data.
+     */
     private void sendHello(){
         try{
             for (Map.Entry<String, Integer> entry: RM_PORTS.entrySet()){

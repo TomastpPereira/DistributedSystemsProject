@@ -715,7 +715,6 @@ public class MarketImpl implements Market {
         }).start();
     }
 
-    // TODO: MAKE ALL UDP REQUESTS 1 FUNCTION
 
     /**
      * Helper method for the Swap shares method which sends a request to market server to check whether the given shares are purchasable.
