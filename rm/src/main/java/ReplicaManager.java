@@ -19,10 +19,12 @@ public class ReplicaManager {
 
     long expectedSequence;
     private  Map<Long, UDPMessage> holdbackQueue;
-    private PriorityQueue<String> deliveryQueue;
+    //private PriorityQueue<String> deliveryQueue;
     private Map<String, Set<String>> votesForReplica;
     private Map<String, Integer> failureCount;
     private Map<String, Integer> markets;
+
+    private boolean fresh;
 
     private Map<String, Integer> RM_PORTS = new HashMap<String, Integer>(){{put("RM1", 7001); put("RM2", 7002);put("RM3", 7003);}};
 
@@ -40,15 +42,18 @@ public class ReplicaManager {
         RM_IP = ip;
         RM_NAME = name;
         RETURN_INFO = new HashMap<>();
+        fresh = true;
         try {
             RETURN_INFO.put(InetAddress.getByName(RM_IP), RM_PORT);
         } catch (Exception e){
             e.printStackTrace();
         }
 
+
         // Launching Replica
             // Central Repos will be at 7011, 7012, 7013
         centralRepo = new CentralRepositoryServer(ip, port+10);
+        markets = new HashMap<>();
         markets.put("Central", port+10);
             // London will be at 7021, 7022, 7023
         londonServer = new LondonServer(ip, port+20);
@@ -63,11 +68,12 @@ public class ReplicaManager {
         // Initializing Necessary Structures
         expectedSequence = 0; //or 1?
         holdbackQueue = new HashMap<>();
-        deliveryQueue = new PriorityQueue<>();
+        //deliveryQueue = new PriorityQueue<>();
         votesForReplica = new ConcurrentHashMap<>();
         votesForReplica.put("RM1", new HashSet<String>());
         votesForReplica.put("RM2", new HashSet<String>());
         votesForReplica.put("RM3", new HashSet<String>());
+        failureCount = new HashMap<>();
         failureCount.put("RM1",0);
         failureCount.put("RM2",0);
         failureCount.put("RM3",0);
@@ -75,7 +81,7 @@ public class ReplicaManager {
         // Begin Active Listener
         startListener();
 
-        // Allows the RM to notify when it's been restart so it can receive data.
+        // Allows the RM to notify when it's been restarted so that it can receive data.
         sendHello();
     }
 
@@ -143,7 +149,9 @@ public class ReplicaManager {
                 sendUDPMessage(pong, address, port);
                 break;
             case HELLO:
-                sendData(msg.getEndpoints());
+                // Ensures that we don't have a chain of data sending during initial startup
+                if (!fresh)
+                    sendData(msg.getEndpoints());
                 break;
             case SYNC:
                 ReplicaStateSnapshot snapshot = (ReplicaStateSnapshot) msg.getPayload();
@@ -237,6 +245,10 @@ public class ReplicaManager {
         synchronized (this){
 
             long sequenceNum = msg.getSequenceNumber();
+
+            // RM has now processed a request.
+            if (fresh)
+                fresh = false;
 
             if (sequenceNum == expectedSequence){
                 deliver(msg);
