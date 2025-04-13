@@ -8,12 +8,17 @@ import javax.xml.ws.Endpoint;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 @WebService(endpointInterface = "market.Market")
 public class FeService implements Market {
-    public FeService(){
+    private static final Dotenv dotenv = Dotenv.configure()
+            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .load();
+
+    public FeService() {
     }
 
     private void sendMessage(
@@ -21,18 +26,18 @@ public class FeService implements Market {
             DatagramSocket socket) {
         try {
             Map<InetAddress, Integer> endpoints = new LinkedHashMap<>();
-            endpoints.put(InetAddress.getByName(Dotenv.load().get("FE_SERVICE_IP")), Integer.parseInt(Dotenv.load().get("FE_SERVICE_PORT")));
+            endpoints.put(InetAddress.getByName(dotenv.get("FE_SERVICE_IP")), Integer.parseInt(dotenv.get("FE_SERVICE_PORT")));
             UDPMessage udpMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.split("::")[0], 0, endpoints, msg);
             byte[] buffer = udpMessage.serialize();
-            InetAddress receiverAddress = InetAddress.getByName(Dotenv.load().get("FE_IP"));
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, Integer.parseInt(Dotenv.load().get("FE_PORT")));
+            InetAddress receiverAddress = InetAddress.getByName(dotenv.get("FE_IP"));
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, Integer.parseInt(dotenv.get("FE_PORT")));
             socket.send(packet);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }
     }
 
-    private String receiveMessage(DatagramSocket socket){
+    private String receiveMessage(DatagramSocket socket) {
         byte[] buffer = new byte[4096];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         try {
@@ -130,7 +135,7 @@ public class FeService implements Market {
     }
 
     public static void main(String[] args) {
-        String serviceUrl = "http://localhost:8080/feservice";
+        String serviceUrl = "http://localhost:" + dotenv.get("FE_SERVICE_PORT") + "/feservice";
         Endpoint.publish(serviceUrl, new FeService());
         System.out.println("FEService is published at " + serviceUrl);
     }

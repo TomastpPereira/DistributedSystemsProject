@@ -1,76 +1,48 @@
-import market.CentralRepository;
+import io.github.cdimascio.dotenv.Dotenv;
 import market.Market;
 import utility.BufferedLog;
 
 import javax.xml.namespace.QName;
 import javax.xml.ws.Service;
 import java.net.URL;
+import java.nio.file.Paths;
 import java.util.Scanner;
-import java.util.concurrent.TimeUnit;
 
 public class Client {
 
     private static BufferedLog log;
     private static String userID;
 
-    private static Market connectToServer(String userID) {
-        String marketPrefix = userID.substring(0, 3);
+    private static Market feStub = null;
+
+    private static Market connectToFeService() {
         try {
-            URL wsdlURL = new URL("http://localhost:" + getPortForMarket(marketPrefix) + "/market?wsdl");
-            QName qname = new QName("http://market/", "MarketImplService");
+            URL wsdlURL = new URL("http://localhost:" + Dotenv.configure()
+                    .directory(Paths.get(System.getProperty("user.dir")).getParent().toString()).load().get("FE_SERVICE_PORT") + "/feservice?wsdl");
+            QName qname = new QName("http://market/", "FeServiceService");
             Service service = Service.create(wsdlURL, qname);
             return service.getPort(Market.class);
         } catch (Exception e) {
-            System.out.println("Failed to connect to " + marketPrefix + '\n' + e.getMessage());
+            System.out.println("Failed to connect to the FE service: " + e.getMessage());
             return null;
         }
     }
 
-    private static int getPortForMarket(String marketPrefix) {
-        return switch (marketPrefix) {
-            case "NYK" -> 1098;
-            case "LON" -> 1099;
-            case "TOK" -> 1097;
-            default -> throw new IllegalArgumentException("Invalid market prefix.");
-        };
-    }
-
-    private static Market connectToMarketForShare(String shareID) {
-        try {
-            URL wsdlURL = new URL("http://localhost:1096/centralrepository?wsdl");
-            QName qname = new QName("http://market/", "CentralRepositoryImplService");
-            Service service = Service.create(wsdlURL, qname);
-            CentralRepository repository = service.getPort(CentralRepository.class);
-
-            String marketPrefix = repository.getMarketForShare(shareID);
-            if (marketPrefix.equals("NONE")) {
-                System.out.println("No market found for Share ID: " + shareID);
-                return null;
-            }
-
-            return connectToServer(marketPrefix);
-        } catch (Exception e) {
-            System.out.println("Error finding market for share." + e.getMessage());
-            return null;
+    private static Market getFeStub() {
+        if (feStub == null) {
+            feStub = connectToFeService();
         }
+        return feStub;
     }
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("\n[Shutdown] Cleaning up resources...");
-            if (log != null) {
-                log.shutdown();
-            }
-            scanner.close();
-            System.out.println("[Shutdown] Cleanup complete.");
-        }));
 
         System.out.println("Welcome to the Distributed Market System");
         System.out.print("Enter your User ID (e.g., ADMNYK1000 or BUYLON1000): ");
         userID = scanner.nextLine().trim();
 
-        String marketPrefix = userID.substring(0, 3);
+        String marketPrefix = userID.substring(3, 6);
         if (!(marketPrefix.equals("NYK") || marketPrefix.equals("LON") || marketPrefix.equals("TOK"))) {
             System.out.println("Invalid market prefix.");
             return;
@@ -81,6 +53,7 @@ public class Client {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.logEntry("Client", "Shutdown", BufferedLog.RequestResponseStatus.SUCCESS, "N/A", "Client exiting.");
+            scanner.close();
             log.shutdown();
         }));
 
@@ -96,7 +69,7 @@ public class Client {
     private static void runAdminClient(Scanner scanner) {
         System.out.println("Admin Access Granted");
 
-        Market stub = connectToServer(userID);
+        Market stub = getFeStub();
         if (stub == null) {
             System.out.println("Exiting due to connection failure.");
             return;
@@ -118,7 +91,7 @@ public class Client {
 
             switch (choice) {
                 case 1 -> {
-                    stub = connectToServer(userID);
+                    stub = getFeStub();
                     System.out.print("Enter Share ID: ");
                     String shareID = scanner.nextLine();
                     System.out.print("Enter Share Type: ");
@@ -133,7 +106,7 @@ public class Client {
                     System.out.println(response);
                 }
                 case 2 -> {
-                    stub = connectToServer(userID);
+                    stub = getFeStub();
                     System.out.print("Enter Share ID: ");
                     String shareID = scanner.nextLine();
                     System.out.print("Enter Share Type: ");
@@ -145,7 +118,7 @@ public class Client {
                     System.out.println(response);
                 }
                 case 3 -> {
-                    stub = connectToServer(userID);
+                    stub = getFeStub();
                     System.out.print("Enter Share Type: ");
                     String shareType = scanner.nextLine();
 
@@ -155,7 +128,7 @@ public class Client {
                 }
                 case 4, 5, 7 -> runSharedTransaction(scanner, choice);
                 case 6 -> {
-                    stub = connectToServer(userID);
+                    stub = getFeStub();
                     assert stub != null;
                     String owned = stub.getShares(userID);
                     log.logEntry("Client", "getShares", BufferedLog.RequestResponseStatus.SUCCESS, owned, "Get owned shares");
@@ -187,7 +160,7 @@ public class Client {
             switch (choice) {
                 case 1, 2, 4 -> runSharedTransaction(scanner, choice);
                 case 3 -> {
-                    Market stub = connectToServer(userID);
+                    Market stub = getFeStub();
                     assert stub != null;
                     String owned = stub.getShares(userID);
                     log.logEntry("Client", "getShares", BufferedLog.RequestResponseStatus.SUCCESS, owned, "Get owned shares");
@@ -203,10 +176,9 @@ public class Client {
     }
 
     private static void runSharedTransaction(Scanner scanner, int operation) {
-        System.out.print("Enter Share ID: ");
-        String shareID = scanner.nextLine();
+        String shareID;
 
-        Market marketStub = connectToMarketForShare(shareID);
+        Market marketStub = getFeStub();
         if (marketStub == null) {
             System.out.println("Failed. No market found.");
             return;
@@ -215,6 +187,8 @@ public class Client {
         try {
             switch (operation) {
                 case 1 -> {
+                    System.out.print("Enter Share ID: ");
+                    shareID = scanner.nextLine();
                     System.out.print("Enter Share Type: ");
                     String shareType = scanner.nextLine();
                     System.out.print("Enter Quantity to Buy: ");
@@ -227,6 +201,8 @@ public class Client {
                     System.out.println(res);
                 }
                 case 2 -> {
+                    System.out.print("Enter Share ID: ");
+                    shareID = scanner.nextLine();
                     System.out.print("Enter Quantity to Sell: ");
                     int qty = scanner.nextInt();
                     scanner.nextLine();
@@ -235,6 +211,8 @@ public class Client {
                     System.out.println(res);
                 }
                 case 4, 7 -> {
+                    System.out.print("Enter Share ID to Remove: ");
+                    shareID = scanner.nextLine();
                     System.out.print("Enter Share Type to Remove: ");
                     String shareType = scanner.nextLine();
                     System.out.print("Enter New Share ID: ");
@@ -248,7 +226,7 @@ public class Client {
             }
         } catch (Exception e) {
             log.logEntry("Client", "Transaction", BufferedLog.RequestResponseStatus.FAILURE, "N/A", "Transaction failed: " + e.getMessage());
-            e.printStackTrace();
+            System.out.println(e.getMessage());
         }
     }
 }

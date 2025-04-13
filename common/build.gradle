@@ -18,6 +18,11 @@ dependencies {
 }
 
 
+application {
+    mainClass = 'market.FeService' // add main class here
+}
+
+
 test {
     useJUnitPlatform()
 }

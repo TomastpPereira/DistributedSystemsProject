@@ -6,6 +6,7 @@
 
 # Gradle build directory
 /build/
+**/build/
 /buildSrc/
 /.gradle/
 /out/

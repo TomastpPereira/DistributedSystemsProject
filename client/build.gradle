@@ -18,7 +18,7 @@ dependencies {
 }
 
 application {
-    mainClass = 'ClientMain'
+    mainClass = 'Client'
 }
 
 run {

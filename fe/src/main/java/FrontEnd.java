@@ -4,32 +4,31 @@ import utility.BufferedLog;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 
 public class FrontEnd {
-    private InetSocketAddress sequencerEndpoint;
-    private List<InetSocketAddress> replicaManagerEndpoints;
-    private DatagramSocket socket;
-    private BlockingQueue<Message> recieveMessage = new LinkedBlockingQueue<>();
-    private BlockingQueue<SendMessage> sentMessages = new LinkedBlockingQueue<>();
-    private BlockingQueue<ClientRequest> sequencerQueue = new LinkedBlockingQueue<>();
-    private static ExecutorService taskExecutor = Executors.newFixedThreadPool(10);
+    private static final Dotenv dotenv = Dotenv.configure()
+            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .load();
+    private final List<InetSocketAddress> replicaManagerEndpoints;
+    private final DatagramSocket socket;
+    private final BlockingQueue<Message> receiveMessage = new LinkedBlockingQueue<>();
+    private final BlockingQueue<SendMessage> sentMessages = new LinkedBlockingQueue<>();
+    private final BlockingQueue<ClientRequest> sequencerQueue = new LinkedBlockingQueue<>();
+    private static final ExecutorService taskExecutor = Executors.newFixedThreadPool(10);
     private static BufferedLog log;
-
-    private static int fePort;
 
     private static long ACK_TIMEOUT;
     private static long REPLICA_RESPONSE_TIMEOUT;
 
-    public FrontEnd(InetSocketAddress sequencerEndpoint, List<InetSocketAddress> replicaManagerEndpoints) throws SocketException {
+    public FrontEnd(List<InetSocketAddress> replicaManagerEndpoints) throws SocketException {
         log = new BufferedLog("logs/", "Front-End", "Front-End");
-        this.sequencerEndpoint = sequencerEndpoint;
         this.replicaManagerEndpoints = replicaManagerEndpoints;
-        fePort = Integer.parseInt(Dotenv.load().get("FE_PORT"));
-        ACK_TIMEOUT = Long.parseLong(Dotenv.load().get("ACK_TIMEOUT"));
-        REPLICA_RESPONSE_TIMEOUT = Long.parseLong(Dotenv.load().get("REPLICA_RESPONSE_TIMEOUT"));
-        this.socket = new DatagramSocket(fePort);
+        ACK_TIMEOUT = Long.parseLong(dotenv.get("ACK_TIMEOUT"));
+        REPLICA_RESPONSE_TIMEOUT = Long.parseLong(dotenv.get("REPLICA_RESPONSE_TIMEOUT"));
+        this.socket = new DatagramSocket(Integer.parseInt(dotenv.get("FE_PORT")));
     }
 
     private class Message {
@@ -47,11 +46,6 @@ public class FrontEnd {
     private class SendMessage extends Message {
         boolean isSend;
 
-        public SendMessage(boolean isSend, UDPMessage message, InetSocketAddress endpoint) {
-            super(message, endpoint);
-            this.isSend = isSend;
-        }
-
         public SendMessage(UDPMessage message, InetSocketAddress endpoint) {
             super(message, endpoint);
             this.isSend = false;
@@ -68,10 +62,6 @@ public class FrontEnd {
 
         public void reSend() {
             this.isSend = false;
-        }
-
-        public boolean isSend() {
-            return this.isSend;
         }
     }
 
@@ -103,7 +93,7 @@ public class FrontEnd {
                 if (isSendToClient) {
                     isSendToClient = false;
                 }
-                if (System.currentTimeMillis() - this.timestamp > Long.parseLong(Dotenv.load().get("REPLICA_RESPONSE_TIMEOUT"))) {
+                if (System.currentTimeMillis() - this.timestamp > Long.parseLong(dotenv.get("REPLICA_RESPONSE_TIMEOUT"))) {
                     this.timestamp = System.currentTimeMillis();
                 }
             }
@@ -171,14 +161,6 @@ public class FrontEnd {
                                            List<InetAddress> errorInetAddress) {
     }
 
-    private Map<InetAddress, Integer> getReplicaManagerEndpointsMap() {
-        Map<InetAddress, Integer> map = new HashMap<>();
-        for (InetSocketAddress addr : replicaManagerEndpoints) {
-            map.put(addr.getAddress(), addr.getPort());
-        }
-        return map;
-    }
-
     private void sendMessage(SendMessage sendMessage) {
         try {
             byte[] buffer = sendMessage.message.serialize();
@@ -205,7 +187,7 @@ public class FrontEnd {
             try {
                 socket.receive(packet);
                 UDPMessage msg = new UDPMessage(packet.getData(), packet.getLength());
-                recieveMessage.add(new Message(msg, new InetSocketAddress(packet.getAddress(), packet.getPort())));
+                receiveMessage.add(new Message(msg, new InetSocketAddress(packet.getAddress(), packet.getPort())));
             } catch (IOException e) {
                 System.out.println("IOException in Front-End receiveLoop " + e.getMessage());
             }
@@ -215,6 +197,9 @@ public class FrontEnd {
     private void sendLoop() {
         while (true) {
             try {
+                if (sentMessages.isEmpty()) {
+                    Thread.sleep(500);
+                }
                 for (SendMessage msg : sentMessages) {
                     if (!msg.isSend) {
                         taskExecutor.submit(() -> {
@@ -239,7 +224,10 @@ public class FrontEnd {
     private void processIncomingMessages() {
         while (true) {
             try {
-                Message msg = recieveMessage.take();
+                if (receiveMessage.isEmpty()) {
+                    Thread.sleep(500);
+                }
+                Message msg = receiveMessage.take();
                 taskExecutor.submit(() -> handleUDPMessage(msg));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -250,6 +238,9 @@ public class FrontEnd {
     private void checkResultFound() {
         while (true) {
             try {
+                if (sequencerQueue.isEmpty()) {
+                    Thread.sleep(500);
+                }
                 for (ClientRequest cr : sequencerQueue) {
                     if ((System.currentTimeMillis() - cr.timestamp) < REPLICA_RESPONSE_TIMEOUT && !cr.isTimeOut()) {
                         taskExecutor.submit(() -> {
@@ -297,7 +288,7 @@ public class FrontEnd {
     }
 
     private void handleAck(String msgId) {
-        recieveMessage.removeIf(msg -> Objects.equals(msg.message.getMessageId(), msgId));
+        receiveMessage.removeIf(msg -> Objects.equals(msg.message.getMessageId(), msgId));
     }
 
     private void handleUDPMessage(Message msg) {
@@ -322,12 +313,12 @@ public class FrontEnd {
                 break;
             case REQUEST:
                 try {
-                    msg.message.addEndpoint(InetAddress.getByName(Dotenv.load().get("FE_IP")), Integer.parseInt(Dotenv.load().get("FE_PORT")));
+                    msg.message.addEndpoint(InetAddress.getByName(dotenv.get("FE_IP")), Integer.parseInt(dotenv.get("FE_PORT")));
                     msg.message.setMessageType(UDPMessage.MessageType.ACK);
                     sentMessages.add(new SendMessage(msg));
 
                     UDPMessage rmMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.message.getAction(), 0, msg.message.getEndpoints(), msg.message.getPayload());
-                    sentMessages.add(new SendMessage(rmMessage, new InetSocketAddress(InetAddress.getByName(Dotenv.load().get("SEQUENCER_IP")), Integer.parseInt(Dotenv.load().get("SEQUENCER_PORT")))));
+                    sentMessages.add(new SendMessage(rmMessage, new InetSocketAddress(InetAddress.getByName(dotenv.get("SEQUENCER_IP")), Integer.parseInt(dotenv.get("SEQUENCER_PORT")))));
                 } catch (Exception e) {
                     System.out.println("Exception in Front-End handleUDPMessage " + e.getMessage());
                 }
@@ -354,15 +345,12 @@ public class FrontEnd {
             }
             System.out.println("[Shutdown] Cleanup complete.");
         }));
-
-        InetSocketAddress sequencerEndpoint = new InetSocketAddress(InetAddress.getByName(Dotenv.load().get("SEQUENCER_PORT")), Integer.parseInt(Dotenv.load().get("SEQUENCER_PORT")));
-
         List<InetSocketAddress> rmEndpoints = new ArrayList<>();
-        rmEndpoints.add(new InetSocketAddress(InetAddress.getByName(Dotenv.load().get("RM_ONE_IP")), Integer.parseInt(Dotenv.load().get("RM_ONE_PORT"))));
-        rmEndpoints.add(new InetSocketAddress(InetAddress.getByName(Dotenv.load().get("RM_TWO_IP")), Integer.parseInt(Dotenv.load().get("RM_TWO_PORT"))));
-        rmEndpoints.add(new InetSocketAddress(InetAddress.getByName(Dotenv.load().get("RM_THREE_PORT")), Integer.parseInt(Dotenv.load().get("RM_THREE_PORT"))));
+        rmEndpoints.add(new InetSocketAddress(InetAddress.getByName(dotenv.get("RM_ONE_IP")), Integer.parseInt(dotenv.get("RM_ONE_PORT"))));
+        rmEndpoints.add(new InetSocketAddress(InetAddress.getByName(dotenv.get("RM_TWO_IP")), Integer.parseInt(dotenv.get("RM_TWO_PORT"))));
+        rmEndpoints.add(new InetSocketAddress(InetAddress.getByName(dotenv.get("RM_THREE_IP")), Integer.parseInt(dotenv.get("RM_THREE_PORT"))));
 
-        FrontEnd fe = new FrontEnd(sequencerEndpoint, rmEndpoints);
+        FrontEnd fe = new FrontEnd(rmEndpoints);
         fe.start();
     }
 }
