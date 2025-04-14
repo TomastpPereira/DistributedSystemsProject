@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ReplicaManager {
 
     int RM_PORT;
-    String RM_IP;
+    InetAddress RM_IP;
     String RM_NAME;
     Map<InetAddress, Integer> RETURN_INFO;
     LondonServer londonServer;
@@ -34,19 +34,18 @@ public class ReplicaManager {
      * @param ip Ip of the server system, provided as a string.
      * @param port Port of the replica manager, defines the ports of the replicas associated with it.
      */
-    public ReplicaManager(String ip, int port, String name){
+    public ReplicaManager(InetAddress ip, int port, String name){
 
         // LAUNCHING RM
         RM_PORT = port;
         RM_IP = ip;
         RM_NAME = name;
         RETURN_INFO = new HashMap<>();
+        RETURN_INFO.put(RM_IP, RM_PORT);
         fresh = true;
-        try {
-            RETURN_INFO.put(InetAddress.getByName(RM_IP), RM_PORT);
-        } catch (Exception e){
-            e.printStackTrace();
-        }
+
+
+
 
 
         // Launching Replica
@@ -74,6 +73,8 @@ public class ReplicaManager {
         failureCount.put("RM2",0);
         failureCount.put("RM3",0);
 
+
+
         // Begin Active Listener
         startListener();
 
@@ -87,6 +88,7 @@ public class ReplicaManager {
     public void startListener(){
         new Thread(()-> {
             try (DatagramSocket socket = new DatagramSocket(this.RM_PORT)){
+                System.out.println("initialized");
                 while (true){
                     byte[] buffer = new byte[4096];
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -121,7 +123,7 @@ public class ReplicaManager {
                 break;
             case CRASH_NOTIFICATION:
                 String crashedRM = (String) msg.getPayload(); // Payload should be the string name of the failed RM
-                sendPing(crashedRM, RM_IP, RM_PORTS.get(crashedRM));
+                sendPing(crashedRM, String.valueOf(RM_IP), RM_PORTS.get(crashedRM));
                 break;
             case INCORRECT_RESULT_NOTIFICATION:
                 String incorrectRM = (String) msg.getPayload();
@@ -136,11 +138,9 @@ public class ReplicaManager {
             case PING:
                 UDPMessage pong = new UDPMessage(UDPMessage.MessageType.PONG, null, 0, null, null);
                 InetAddress address = null;
-                try {
-                    address = InetAddress.getByName(RM_IP);
-                } catch (UnknownHostException e) {
-                    throw new RuntimeException(e);
-                }
+
+                address = RM_IP;
+
                 int port = msg.getEndpoints().get(address);
                 sendUDPMessage(pong, address, port);
                 break;
@@ -193,7 +193,7 @@ public class ReplicaManager {
         try {
             byte[] data = serialize(msg);
             DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
-            DatagramSocket socket = new DatagramSocket(RM_PORT);
+            DatagramSocket socket = new DatagramSocket();
             socket.send(packet);
         } catch (IOException e) {
             e.printStackTrace();
@@ -293,11 +293,9 @@ public class ReplicaManager {
 
         InetAddress address;
         int marketPort = markets.get(marketName);
-        try {
-            address = InetAddress.getByName(RM_IP);
-        } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
-        }
+
+        address = RM_IP;
+
 
         sendUDPMessage(forwardMessage, address, marketPort);
     }
@@ -359,11 +357,9 @@ public class ReplicaManager {
 
             InetAddress address;
             if (!rmName.equals(crashedName) && !rmName.equals(RM_NAME)){
-                try {
-                    address = InetAddress.getByName(RM_IP);
-                } catch (UnknownHostException e) {
-                    throw new RuntimeException(e);
-                }
+
+                address = RM_IP;
+
                 sendUDPMessage(vote, address, port);
             }
         }
@@ -424,7 +420,7 @@ public class ReplicaManager {
             DatagramSocket socket = new DatagramSocket();
             for (String market: markets.keySet()){
                 int port = markets.get(market);
-                InetAddress address = InetAddress.getByName(RM_IP);
+                InetAddress address = RM_IP;
 
                 UDPMessage request = new UDPMessage(UDPMessage.MessageType.REQUEST, "DATA-SEND", 0, null, null);
                 sendUDPMessage(request, address, port);
@@ -477,7 +473,7 @@ public class ReplicaManager {
             for (String market: markets.keySet()){
                 MarketStateSnapshot marketSnapshot = snapshot.getMarketSnapshots().get(market);
 
-                InetAddress address = InetAddress.getByName(RM_IP);
+                InetAddress address = RM_IP;
                 int port = markets.get(market);
 
                 UDPMessage helloMsg = new UDPMessage(UDPMessage.MessageType.REQUEST, "DATA-RECEIVE", 0,
@@ -506,7 +502,7 @@ public class ReplicaManager {
                     javaBin,
                     "-cp", classPath,
                     className,
-                    this.RM_IP,
+                    String.valueOf(RM_IP),
                     String.valueOf(port),
                     crashed
             );
@@ -527,7 +523,7 @@ public class ReplicaManager {
         try{
             for (Map.Entry<String, Integer> entry: RM_PORTS.entrySet()){
                 if (!entry.getKey().equals(RM_NAME)){
-                    InetAddress address = InetAddress.getByName(RM_IP);
+                    InetAddress address = RM_IP;
                     int port = entry.getValue();
 
                     UDPMessage helloMsg = new UDPMessage(UDPMessage.MessageType.HELLO, "hello", 0,

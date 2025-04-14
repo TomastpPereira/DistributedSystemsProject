@@ -1,6 +1,7 @@
 import market.MarketImpl;
 
 import javax.xml.ws.Endpoint;
+import java.net.InetAddress;
 
 public class LondonServer {
 
@@ -15,13 +16,12 @@ public class LondonServer {
 //        System.out.println("London Market (LON) is live on JAX-WS.");
 //    }
 
-    public LondonServer(String ip, int port){
+    public LondonServer(InetAddress ip, int port){
         MarketImpl market = new MarketImpl();
-        market.initialize("LON", port, ip, port-20);
+        market.initialize("LON", port, String.valueOf(ip), port-20);
         udpEndpoint = new UDPServer(port, market);
         udpEndpoint.start();
         String ipPublish = "http://" + ip + ":" + port + "/LON";
         marketEndpoint = Endpoint.publish(ipPublish, market);
     }
-
 }

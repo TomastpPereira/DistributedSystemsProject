@@ -1,6 +1,7 @@
 import market.MarketImpl;
 
 import javax.xml.ws.Endpoint;
+import java.net.InetAddress;
 
 public class TokyoServer {
 
@@ -15,9 +16,9 @@ public class TokyoServer {
 //        System.out.println("Tokyo Market (TOK) is live on JAX-WS.");
 //    }
 
-    public TokyoServer(String ip, int port){
+    public TokyoServer(InetAddress ip, int port){
         MarketImpl market = new MarketImpl();
-        market.initialize("TOK", port, ip, port-40);
+        market.initialize("TOK", port, String.valueOf(ip), port-40);
         udpEndpoint = new UDPServer(port, market);
         udpEndpoint.start();
         String ipPublish = "http://" + ip + ":" + port + "/Tokyo";
