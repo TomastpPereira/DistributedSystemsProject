@@ -26,7 +26,7 @@ public class FeService implements Market {
             DatagramSocket socket) {
         try {
             Map<InetAddress, Integer> endpoints = new LinkedHashMap<>();
-            endpoints.put(InetAddress.getByName(dotenv.get("FE_SERVICE_IP")), Integer.parseInt(dotenv.get("FE_SERVICE_PORT")));
+            endpoints.put(InetAddress.getByName(dotenv.get("FE_SERVICE_IP")), socket.getLocalPort());
             UDPMessage udpMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.split("::")[0], 0, endpoints, msg);
             byte[] buffer = udpMessage.serialize();
             InetAddress receiverAddress = InetAddress.getByName(dotenv.get("FE_IP"));
@@ -53,7 +53,7 @@ public class FeService implements Market {
     @Override
     public String addShare(String shareID, String shareType, int capacity) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
-            String market = shareID.substring(0,3);
+            String market = shareID.substring(0, 3);
             String msg = market + ":addShare:" + shareID + ":" + shareType + ":" + capacity;
             sendMessage(msg, tempSocket);
             return receiveMessage(tempSocket);
@@ -66,7 +66,7 @@ public class FeService implements Market {
     @Override
     public String removeShare(String shareID, String shareType) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
-            String market = shareID.substring(0,3);
+            String market = shareID.substring(0, 3);
             String msg = market + ":removeShare:" + shareID + ":" + shareType;
             sendMessage(msg, tempSocket);
             return receiveMessage(tempSocket);
@@ -92,7 +92,7 @@ public class FeService implements Market {
     @Override
     public String purchaseShare(String buyerID, String shareID, String shareType, int shareCount, String datemonthyear) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
-            String market = shareID.substring(0,3);
+            String market = shareID.substring(0, 3);
             String msg = market + ":purchaseShare:" + buyerID + ":" + shareID + ":" + shareType + ":" + shareCount + ":" + datemonthyear;
             sendMessage(msg, tempSocket);
             return receiveMessage(tempSocket);
@@ -105,7 +105,7 @@ public class FeService implements Market {
     @Override
     public String swapShares(String buyerID, String oldShareID, String oldShareType, String newShareID, String newShareType) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
-            String market = oldShareID.substring(0,3);
+            String market = oldShareID.substring(0, 3);
             String msg = market + ":swapShares:" + buyerID + ":" + oldShareID + ":" + oldShareType + ":" + newShareID + ":" + newShareType;
             sendMessage(msg, tempSocket);
             return receiveMessage(tempSocket);
@@ -131,7 +131,7 @@ public class FeService implements Market {
     @Override
     public String sellShare(String buyerID, String shareID, int shareCount) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
-            String market = shareID.substring(0,3);
+            String market = shareID.substring(0, 3);
             String msg = market + ":sellShare:" + buyerID + ":" + shareID + ":" + shareCount;
             sendMessage(msg, tempSocket);
             return receiveMessage(tempSocket);

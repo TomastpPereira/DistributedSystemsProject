@@ -297,7 +297,11 @@ public class FrontEnd {
                 handleAck(msg.message.getMessageId());
                 break;
             case RESPONSE:
-                sequencerQueue.add(new ClientRequest(msg.message.getSequenceNumber(), msg.message, msg.endpoint));
+                try {
+                    sequencerQueue.add(new ClientRequest(msg.message.getSequenceNumber(), msg.message, new InetSocketAddress(dotenv.get("FE_IP"), msg.message.getEndpoints().get(InetAddress.getByName(dotenv.get("FE_SERVICE_IP"))))));
+                } catch (Exception e) {
+                    System.out.println(e.getMessage());
+                }
                 break;
             case RESULT:
                 msg.message.setMessageType(UDPMessage.MessageType.ACK);
