@@ -356,5 +356,7 @@ public class FrontEnd {
 
         FrontEnd fe = new FrontEnd(rmEndpoints);
         fe.start();
+
+        System.out.println("[Front-End] Front-End started.");
     }
 }

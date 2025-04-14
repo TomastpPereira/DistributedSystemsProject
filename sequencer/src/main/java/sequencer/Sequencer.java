@@ -1,8 +1,10 @@
 package sequencer;
+import io.github.cdimascio.dotenv.Dotenv;
 import network.UDPMessage;
 import network.UDPMessage.MessageType;
 import java.io.IOException;
 import java.net.*;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -10,11 +12,14 @@ import java.util.concurrent.atomic.AtomicLong;
 public class Sequencer {
 
     //CONFIGURATIONS
-    private static final int SEQUENCER_PORT = 5000;          // port this sequencer listens on
+    private static final Dotenv dotenv = Dotenv.configure()
+            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .load();
+    private static final int SEQUENCER_PORT = Integer.parseInt(dotenv.get("SEQUENCER_PORT"));          // port this sequencer listens on
     private static final List<InetSocketAddress> REPLICAS = Arrays.asList(
-            new InetSocketAddress("192.168.1.101", 6001),
-            new InetSocketAddress("192.168.1.102", 6002),
-            new InetSocketAddress("192.168.1.103", 6003)
+            new InetSocketAddress(dotenv.get("RM_ONE_IP"), Integer.parseInt(dotenv.get("RM_ONE_PORT"))),
+            new InetSocketAddress(dotenv.get("RM_TWO_IP"), Integer.parseInt(dotenv.get("RM_TWO_PORT"))),
+            new InetSocketAddress(dotenv.get("RM_THREE_IP"), Integer.parseInt(dotenv.get("RM_THREE_PORT")))
     );
     private InetSocketAddress FrontEndAddress;
     //FRONTEND_ACK_TIMEOUT_MS
