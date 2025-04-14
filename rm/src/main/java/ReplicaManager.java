@@ -12,7 +12,6 @@ public class ReplicaManager {
     String RM_IP;
     String RM_NAME;
     Map<InetAddress, Integer> RETURN_INFO;
-    CentralRepositoryServer centralRepo;
     LondonServer londonServer;
     NYServer nyServer;
     TokyoServer tokyoServer;
@@ -51,17 +50,14 @@ public class ReplicaManager {
 
 
         // Launching Replica
-            // Central Repos will be at 7011, 7012, 7013
-        centralRepo = new CentralRepositoryServer(ip, port+10);
         markets = new HashMap<>();
-        markets.put("Central", port+10);
-            // London will be at 7021, 7022, 7023
+        // London will be at 7021, 7022, 7023
         londonServer = new LondonServer(ip, port+20);
         markets.put("LON", port+20);
-            // London will be at 7031, 7032, 7033
+        // NY will be at 7031, 7032, 7033
         nyServer = new NYServer(ip, port+30);
         markets.put("NY", port+30);
-            // London will be at 7041, 7042, 7043
+        // Tokyo will be at 7041, 7042, 7043
         tokyoServer = new TokyoServer(ip, port+40);
         markets.put("TOK", port+40);
 

@@ -27,6 +27,7 @@ public class MarketImpl implements Market {
 
     private String market;
     private int port;
+    private int RMPort;
 
 
     public MarketImpl(){
@@ -57,11 +58,12 @@ public class MarketImpl implements Market {
      * @param market    The market associated with this object (NYK, LON or TOK)
      * @param port      The port for this market server.
      */
-    public void initialize(String market, int port, String ip, int centralPort){
+    public void initialize(String market, int port, String ip, int RMPort){
         this.market = market;
         this.port = port;
+        this.RMPort = RMPort;
 
-        registerWithCentralRepository(ip, centralPort);
+        //registerWithCentralRepository(ip, centralPort);
         shares = new HashMap<>();
         shares.put("Equity", new HashMap<>());
         shares.put("Bonus", new HashMap<>());
@@ -79,6 +81,7 @@ public class MarketImpl implements Market {
 
     /**
      * Forms a connection between the market and the central repository and registers its port information.
+     * Not utilized in the distributed system.
      */
     private void registerWithCentralRepository(String ip, int port) {
         try {
@@ -211,13 +214,13 @@ public class MarketImpl implements Market {
 
         // Query other servers
         if (!market.equals("NYK")) {
-            result.append("NYK: ").append(requestShareAvailability(shareType, "localhost",1098)).append("\n");
+            result.append("NYK: ").append(requestShareAvailability(shareType, "localhost",RMPort+30)).append("\n");
         }
         if (!market.equals("LON")) {
-            result.append("LON: ").append(requestShareAvailability(shareType, "localhost",1099)).append("\n");
+            result.append("LON: ").append(requestShareAvailability(shareType, "localhost",RMPort+20)).append("\n");
         }
         if (!market.equals("TOK")) {
-            result.append("TOK: ").append(requestShareAvailability(shareType, "localhost",1097)).append("\n");
+            result.append("TOK: ").append(requestShareAvailability(shareType, "localhost",RMPort+40)).append("\n");
         }
 
         result.append(market).append(": ").append(getLocalShareAvailability(shareType)).append("\n");
@@ -348,13 +351,13 @@ public class MarketImpl implements Market {
 
             // Share the cross market purchase to others
             if (!market.equals("NYK")) {
-                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", 1098);
+                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", RMPort+30);
             }
             if (!market.equals("LON")) {
-                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", 1099);
+                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", RMPort+20);
             }
             if (!market.equals("TOK")) {
-                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", 1097);
+                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", RMPort+40);
             }
 
         }
@@ -465,13 +468,13 @@ public class MarketImpl implements Market {
 
         // Query other servers
         if (!market.equals("NYK")) {
-            result.append("NYK: ").append(requestOwnedShares(buyerID, "localhost", 1098)).append("\n");
+            result.append("NYK: ").append(requestOwnedShares(buyerID, "localhost", RMPort+30)).append("\n");
         }
         if (!market.equals("LON")) {
-            result.append("LON: ").append(requestOwnedShares(buyerID, "localhost", 1099)).append("\n");
+            result.append("LON: ").append(requestOwnedShares(buyerID, "localhost", RMPort+20)).append("\n");
         }
         if (!market.equals("TOK")) {
-            result.append("TOK: ").append(requestOwnedShares(buyerID, "localhost", 1097)).append("\n");
+            result.append("TOK: ").append(requestOwnedShares(buyerID, "localhost", RMPort+40)).append("\n");
         }
 
         result.append(market).append(": ").append(getLocalOwnedShares(buyerID)).append("\n");
@@ -628,13 +631,13 @@ public class MarketImpl implements Market {
         String purchaseResult = "";
 
         if (shareMarket.equals("NYK")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", 1098);
+            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", RMPort+30);
         }
         if (shareMarket.equals("LON")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", 1099);
+            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", RMPort+20);
         }
         if (shareMarket.equals("TOK")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", 1097);
+            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", RMPort+40);
         }
 
         // IF Cant Purchase
@@ -650,13 +653,13 @@ public class MarketImpl implements Market {
             // Send message to other server to buy
         String buyResult = "";
         if (shareMarket.equals("NYK")) {
-            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", 1098);
+            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", RMPort+30);
         }
         if (shareMarket.equals("LON")) {
-            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", 1099);
+            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", RMPort+20);
         }
         if (shareMarket.equals("TOK")) {
-            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", 1097);
+            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", RMPort+40);
         }
 
 

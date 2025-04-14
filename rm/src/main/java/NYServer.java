@@ -17,7 +17,7 @@ public class NYServer {
 
     public NYServer(String ip, int port){
         MarketImpl market = new MarketImpl();
-        market.initialize("NY", port, ip, port-20);
+        market.initialize("NY", port, ip, port-30);
         udpEndpoint = new UDPServer(port, market);
         udpEndpoint.start();
         String ipPublish = "http://" + ip + ":" + port + "/NY";
