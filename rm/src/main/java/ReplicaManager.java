@@ -175,7 +175,6 @@ public class ReplicaManager {
         failureCount.put(incorrectRM, numFails);
 
         // If failed 3 times, send vote out
-        // TODO: Adapt to be 3 fails in a row
         if (numFails >= 3){
             voteForRestart(incorrectRM);
         }
@@ -272,7 +271,7 @@ public class ReplicaManager {
      * Begins the processing of the request, sending it to the markets
      * @param msg UDPMessage containing the data of the request
      */
-    //TODO: THIS MUST ALIGN WITH THE FORMAT OF MESSAGES BEING SENT
+    // THIS MUST ALIGN WITH THE FORMAT OF MESSAGES BEING SENT
     // Assumes a request to the markets is of type REQUEST, and payload is MARKET_NAME:param1:param2:etc
     // Action is the type of request, ex purchaseShare, swapShare
     // MARKET_NAME should be NY, LON or TOK
@@ -291,11 +290,8 @@ public class ReplicaManager {
         UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, action, 0, null, sendData);
         forwardMessage.setSequenceNumber(msg.getSequenceNumber());
 
-        InetAddress address;
+        InetAddress address = RM_IP;
         int marketPort = markets.get(marketName);
-
-        address = RM_IP;
-
 
         sendUDPMessage(forwardMessage, address, marketPort);
     }
