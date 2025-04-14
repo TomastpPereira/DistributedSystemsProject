@@ -78,6 +78,61 @@ public class UDPServer extends Thread{
                         market.updateMarketState(snapshotReceive);
                         response = new UDPMessage(UDPMessage.MessageType.ACK, "OK", 0, null, null);
                         break;
+                    case "addShare":
+                        String params = (String) udpMessage.getPayload();
+                        String[] paramsA = params.split(":");
+                        String shareID = paramsA[0];
+                        shareType = paramsA[1];
+                        int cap = Integer.parseInt(paramsA[2]);
+                        market.addShare(shareID, shareType, cap);
+                        break;
+                    case "removeShare":
+                        params = (String) udpMessage.getPayload();
+                        paramsA = params.split(":");
+                        shareID = paramsA[0];
+                        shareType = paramsA[1];
+                        market.removeShare(shareID, shareType);
+                        break;
+                    case "listShareAvailability":
+                        params = (String) udpMessage.getPayload();
+                        paramsA = params.split(":");
+                        shareType = paramsA[1];
+                        market.listShareAvailability(shareType);
+                        break;
+                    case "purchaseShare":
+                        params = (String) udpMessage.getPayload();
+                        paramsA = params.split(":");
+                        buyerID = paramsA[0];
+                        shareID = paramsA[1];
+                        shareType = paramsA[2];
+                        cap = Integer.parseInt(paramsA[3]);
+                        String datemonthyear = paramsA[4];
+                        market.purchaseShare(buyerID, shareID, shareType, cap, datemonthyear);
+                        break;
+                    case "swapShares":
+                        params = (String) udpMessage.getPayload();
+                        paramsA = params.split(":");
+                        buyerID = paramsA[0];
+                        String oldShareID = paramsA[1];
+                        String oldShareType = paramsA[2];
+                        String newShareID = paramsA[3];
+                        String newShareType = paramsA[4];
+                        market.swapShares(buyerID, oldShareID, oldShareType, newShareID, newShareType);
+                        break;
+                    case "getShares":
+                        params = (String) udpMessage.getPayload();
+                        paramsA = params.split(":");
+                        buyerID = paramsA[0];
+                        market.getShares(buyerID);
+                        break;
+                    case "sellShare":
+                        params = (String) udpMessage.getPayload();
+                        paramsA = params.split(":");
+                        buyerID = paramsA[0];
+                        shareID = paramsA[1];
+                        cap = Integer.parseInt(paramsA[2]);
+                        market.sellShare(buyerID, shareID, cap);
+                        break;
                     default:
                         break;
                 }

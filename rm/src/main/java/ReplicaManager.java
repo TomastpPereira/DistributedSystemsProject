@@ -284,14 +284,15 @@ public class ReplicaManager {
 
         Object[] requestData = (Object[]) msg.getPayload();
         String marketName = (String) requestData[0];
+        String action = (String) requestData[1];
 
         // Send data should just be param1:param2:etc
-        Object[] sendData = new Object[requestData.length - 1];
-        for (int i = 1; i < requestData.length; i++) {
-            sendData[i - 1] = requestData[i];
+        Object[] sendData = new Object[requestData.length - 2];
+        for (int i = 2; i < requestData.length; i++) {
+            sendData[i - 2] = requestData[i];
         }
 
-        UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.getAction(), 0, null, sendData);
+        UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, action, 0, null, sendData);
 
         InetAddress address;
         int marketPort = markets.get(marketName);
