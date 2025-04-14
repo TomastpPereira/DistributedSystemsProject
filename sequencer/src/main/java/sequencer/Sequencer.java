@@ -16,6 +16,7 @@ public class Sequencer {
             new InetSocketAddress("192.168.1.102", 6002),
             new InetSocketAddress("192.168.1.103", 6003)
     );
+    private InetSocketAddress FrontEndAddress;
     //FRONTEND_ACK_TIMEOUT_MS
     private static final int REPLICA_ACK_WAIT_MS = 3000;     // how long to wait for replica ACKs
     private static final int MAX_RETRIES = 3;                // multicast retry attempts if 3 ack's are not received
@@ -73,6 +74,7 @@ public class Sequencer {
                 switch (msg.getMessageType()) {
                     case REQUEST:
                         handleFrontEndRequest(msg, sender);
+                        FrontEndAddress = sender;
                         break;
                     case ACK:
                         handleReplicaAck(msg, sender);
@@ -93,9 +95,6 @@ public class Sequencer {
         // always ACK back to front end
         MessageType origType = msg.getMessageType();
         msg.setMessageType(MessageType.ACK);
-        sendMessage(msg, frontEndAddr);
-        // ADDED NEW - to send "RESPONSE" as message type
-        msg.setMessageType(MessageType.RESPONSE);
         sendMessage(msg, frontEndAddr);
         msg.setMessageType(origType);
 
@@ -135,6 +134,13 @@ public class Sequencer {
                 // REDUNDANT CODE - JUST TO MAKE SURE IT IS ALWAYS 'REQUEST'
                 msg_request.setMessageType(MessageType.REQUEST);
                 pendingACKs.put(seq_number, msg_request);
+
+                // INFORM FRONT END OF ASSIGNED SEQUENCE NUMBER -- new requirement for front end
+                // construct a new RESPONSE message carrying the same action/payload + seq#
+                UDPMessage response = msg_request;
+                response.setMessageType(MessageType.RESPONSE);
+                sendMessage(response, FrontEndAddress);
+
 
                 // prepare ACK tracking
                 CountDownLatch latch = new CountDownLatch(REPLICAS.size());
