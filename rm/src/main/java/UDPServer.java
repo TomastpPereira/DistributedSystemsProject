@@ -84,14 +84,16 @@ public class UDPServer extends Thread{
                         String shareID = paramsA[0];
                         shareType = paramsA[1];
                         int cap = Integer.parseInt(paramsA[2]);
-                        market.addShare(shareID, shareType, cap);
+                        result = market.addShare(shareID, shareType, cap);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "addShare", 0, null, result);
                         break;
                     case "removeShare":
                         params = (String) udpMessage.getPayload();
                         paramsA = params.split(":");
                         shareID = paramsA[0];
                         shareType = paramsA[1];
-                        market.removeShare(shareID, shareType);
+                        result = market.removeShare(shareID, shareType);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "removeShare", 0, null, result);
                         break;
                     case "listShareAvailability":
                         params = (String) udpMessage.getPayload();
@@ -107,7 +109,8 @@ public class UDPServer extends Thread{
                         shareType = paramsA[2];
                         cap = Integer.parseInt(paramsA[3]);
                         String datemonthyear = paramsA[4];
-                        market.purchaseShare(buyerID, shareID, shareType, cap, datemonthyear);
+                        result = market.purchaseShare(buyerID, shareID, shareType, cap, datemonthyear);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "listShareAvailability", 0, null, result);
                         break;
                     case "swapShares":
                         params = (String) udpMessage.getPayload();
@@ -117,13 +120,15 @@ public class UDPServer extends Thread{
                         String oldShareType = paramsA[2];
                         String newShareID = paramsA[3];
                         String newShareType = paramsA[4];
-                        market.swapShares(buyerID, oldShareID, oldShareType, newShareID, newShareType);
+                        result = market.swapShares(buyerID, oldShareID, oldShareType, newShareID, newShareType);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "swapShares", 0, null, result);
                         break;
                     case "getShares":
                         params = (String) udpMessage.getPayload();
                         paramsA = params.split(":");
                         buyerID = paramsA[0];
-                        market.getShares(buyerID);
+                        result = market.getShares(buyerID);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "getShares", 0, null, result);
                         break;
                     case "sellShare":
                         params = (String) udpMessage.getPayload();
@@ -131,10 +136,17 @@ public class UDPServer extends Thread{
                         buyerID = paramsA[0];
                         shareID = paramsA[1];
                         cap = Integer.parseInt(paramsA[2]);
-                        market.sellShare(buyerID, shareID, cap);
+                        result = market.sellShare(buyerID, shareID, cap);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "sellShare", 0, null, result);
                         break;
                     default:
                         break;
+                }
+
+                // Null sequence number
+                if (udpMessage.getSequenceNumber() != 0){
+                    assert response != null;
+                    response.setSequenceNumber(udpMessage.getSequenceNumber());
                 }
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -144,11 +156,17 @@ public class UDPServer extends Thread{
 
                 byte[] responseBytes = baos.toByteArray();
 
+                DatagramPacket responseData;
                 // Retrieving the info of the FE to send there and not back to the RM
-                InetAddress address = (InetAddress) udpMessage.getEndpoints().keySet().toArray()[0];
-                int port = udpMessage.getEndpoints().get(address);
-
-                DatagramPacket responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
+                if (udpMessage.getEndpoints() != null) {
+                    InetAddress address = (InetAddress) udpMessage.getEndpoints().keySet().toArray()[0];
+                    int port = udpMessage.getEndpoints().get(address);
+                    responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
+                }
+                // If there were no endpoints, send the result back to the sender. Used for the internal UDP messages.
+                else {
+                    responseData = new DatagramPacket(responseBytes, responseBytes.length, socket.getInetAddress(), socket.getPort());
+                }
                 socket.send(responseData);
             }
 
@@ -158,13 +176,4 @@ public class UDPServer extends Thread{
         }
     }
 
-
-
-    private byte[] serialize(UDPMessage msg) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(baos);
-        oos.writeObject(msg);
-        oos.flush();
-        return baos.toByteArray();
-    }
 }
