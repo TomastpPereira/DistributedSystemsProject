@@ -13,7 +13,7 @@ public class Sequencer {
 
     //CONFIGURATIONS
     private static final Dotenv dotenv = Dotenv.configure()
-            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
             .load();
     private static final int SEQUENCER_PORT = Integer.parseInt(dotenv.get("SEQUENCER_PORT"));          // port this sequencer listens on
     private static final List<InetSocketAddress> REPLICAS = Arrays.asList(
@@ -32,7 +32,7 @@ public class Sequencer {
     private final DatagramSocket socket;
     private final AtomicLong seqGenerator = new AtomicLong(0);
 
-    // track front‐end messageIds + receiveTimestamp for duplicate detection
+    // track frontend messageIds + receiveTimestamp for duplicate detection
     private final ConcurrentMap<String, Long> receivedIds = new ConcurrentHashMap<>();
 
     // queue of new, unique requests from front end - order is preserved

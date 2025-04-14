@@ -8,7 +8,7 @@ public class ReplicaManagerMain {
     public static void main(String[] args) throws Exception {
 
         Dotenv dotenv = Dotenv.configure()
-                .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+                .directory(Paths.get(System.getProperty("user.dir")).toString())//.getParent()
                 .load();
 
 

@@ -15,7 +15,7 @@ import java.util.Map;
 @WebService(endpointInterface = "market.Market")
 public class FeService implements Market {
     private static final Dotenv dotenv = Dotenv.configure()
-            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) // .getParent()
             .load();
 
     public FeService() {

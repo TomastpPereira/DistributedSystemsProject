@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 
 public class FrontEnd {
     private static final Dotenv dotenv = Dotenv.configure()
-            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
             .load();
     private final List<InetSocketAddress> replicaManagerEndpoints;
     private final DatagramSocket socket;
