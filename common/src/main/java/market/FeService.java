@@ -76,7 +76,6 @@ public class FeService implements Market {
         }
     }
 
-    //TODO: Where to get market info?
     @Override
     public String listShareAvailability(String shareType) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
