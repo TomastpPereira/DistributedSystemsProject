@@ -7,6 +7,7 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketException;
 import java.nio.file.Paths;
 
 /**
@@ -16,6 +17,7 @@ public class UDPServer extends Thread{
 
     private final int port;
     private final MarketImpl market;
+    private final DatagramSocket socket;
 
     private static final Dotenv dotenv = Dotenv.configure()
             .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
@@ -24,10 +26,15 @@ public class UDPServer extends Thread{
     public UDPServer(int port, MarketImpl market){
         this.port = port;
         this.market = market;
+        try {
+            this.socket = new DatagramSocket(port);
+        } catch (SocketException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void run(){
-        try (DatagramSocket socket = new DatagramSocket(port)){
+        try {
             System.out.println("UDP Server connected to port " + port);
 
             while (true){
@@ -165,6 +172,7 @@ public class UDPServer extends Thread{
 
                 DatagramPacket responseData;
                 // Retrieving the info of the FE to send there and not back to the RM
+                assert response != null;
                 if (response.getMessageType() == UDPMessage.MessageType.RESULT) {
                     InetAddress address;
                     address = InetAddress.getByName(dotenv.get("FE_IP"));

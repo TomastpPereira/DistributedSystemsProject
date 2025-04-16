@@ -65,7 +65,7 @@ public class ReplicaManager {
         markets.put("TOK", port+40);
 
         // Initializing Necessary Structures
-        expectedSequence = 0; //or 1?
+        expectedSequence = 1; //or 1?
         holdbackQueue = new HashMap<>();
         //deliveryQueue = new PriorityQueue<>();
         votesForReplica = new ConcurrentHashMap<>();
