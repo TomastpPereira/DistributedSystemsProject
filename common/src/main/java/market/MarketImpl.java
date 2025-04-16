@@ -694,6 +694,8 @@ public class MarketImpl implements Market {
                 oos.writeObject(message);
                 oos.flush();
 
+                System.out.println("Market is sending buy order");
+
                 InetAddress address = InetAddress.getByName(hostReceiver);
                 DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, port);
                 socket.send(request);
@@ -703,6 +705,8 @@ public class MarketImpl implements Market {
                 byte[] buffer = new byte[4096];
                 DatagramPacket response = new DatagramPacket(buffer, buffer.length);
                 socket.receive(response);
+
+                System.out.println("Marker buy order complete");
 
                 ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
                 ObjectInputStream ois = new ObjectInputStream(bais);
@@ -736,6 +740,8 @@ public class MarketImpl implements Market {
             String payload = shareID + ":" + shareType + ":" + shareAmount;
             UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "BUY_CHECK", 0, null, payload);
 
+            System.out.println("Market sending request to validate purchase");
+
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ObjectOutputStream oos = new ObjectOutputStream(baos);
             oos.writeObject(message);
@@ -750,6 +756,7 @@ public class MarketImpl implements Market {
             byte[] buffer = new byte[4096];
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);
             socket.receive(response);
+            System.out.println("Market received response to validate purchase");
 
             ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
             ObjectInputStream ois = new ObjectInputStream(bais);
