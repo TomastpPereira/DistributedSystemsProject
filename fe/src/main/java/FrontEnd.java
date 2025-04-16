@@ -73,7 +73,7 @@ public class FrontEnd {
     private class ClientRequest {
         final Long sequenceNumber;
         long timestamp;
-        HashMap<InetAddress, String> replicaResponses;
+        HashMap<Integer, String> replicaResponses;
         boolean isTimeOut = false;
         boolean isSendToClient = false;
         boolean isSendToServer = false;
@@ -90,11 +90,11 @@ public class FrontEnd {
                     "Sequence: " + sequenceNumber, "Created client request for endpoint " + endpoint);
         }
 
-        public void addResponse(InetAddress address, String response) {
+        public void addResponse(Integer port, String response) {
             if (!isFull()) {
                 log.logEntry("FE_ClientRequest", "Response Added", BufferedLog.RequestResponseStatus.SUCCESS,
-                        "From " + address.getHostAddress() + " Response: " + response, "Sequence: " + sequenceNumber);
-                replicaResponses.put(address, response);
+                        "From " + port + " Response: " + response, "Sequence: " + sequenceNumber);
+                replicaResponses.put(port, response);
                 if (isSendToClient) {
                     isSendToClient = false;
                 }
@@ -127,18 +127,18 @@ public class FrontEnd {
         }
 
         public ReplicateResponseMetric analyzeResponses() {
-            Map<String, List<InetAddress>> groupedByResult = new HashMap<>();
+            Map<String, List<Integer>> groupedByResult = new HashMap<>();
 
-            for (Map.Entry<InetAddress, String> entry : replicaResponses.entrySet()) {
+            for (Map.Entry<Integer, String> entry : replicaResponses.entrySet()) {
                 String result = entry.getValue();
-                InetAddress address = entry.getKey();
+                Integer address = entry.getKey();
                 groupedByResult.computeIfAbsent(result, k -> new ArrayList<>()).add(address);
             }
 
             String majorityResult = null;
-            List<InetAddress> matched = new ArrayList<>();
+            List<Integer> matched = new ArrayList<>();
 
-            for (Map.Entry<String, List<InetAddress>> entry : groupedByResult.entrySet()) {
+            for (Map.Entry<String, List<Integer>> entry : groupedByResult.entrySet()) {
                 if (entry.getValue().size() >= 2) {
                     majorityResult = entry.getKey();
                     matched = new ArrayList<>(entry.getValue());
@@ -146,9 +146,9 @@ public class FrontEnd {
                 }
             }
 
-            List<InetAddress> mismatched = new ArrayList<>();
+            List<Integer> mismatched = new ArrayList<>();
             if (majorityResult != null && matched.size() != replicaResponses.size()) {
-                for (Map.Entry<InetAddress, String> entry : replicaResponses.entrySet()) {
+                for (Map.Entry<Integer, String> entry : replicaResponses.entrySet()) {
                     if (!entry.getValue().equals(majorityResult)) {
                         mismatched.add(entry.getKey());
                     }
@@ -165,8 +165,8 @@ public class FrontEnd {
         }
     }
 
-    private record ReplicateResponseMetric(String majorityResult, List<InetAddress> matchedInetAddress,
-                                           List<InetAddress> errorInetAddress) {
+    private record ReplicateResponseMetric(String majorityResult, List<Integer> matchedInetAddress,
+                                           List<Integer> errorInetAddress) {
     }
 
     private void sendMessage(SendMessage sendMessage) {
@@ -279,7 +279,7 @@ public class FrontEnd {
                         "MessageID: " + msg.message.getMessageId(), "Processing ACK");
                 handleAck(msg.message.getMessageId());
                 break;
-            case RESPONSE:
+            case RESPONSE: // From Sequencer
                 log.logEntry("FE_HandleMessage", "Response received", BufferedLog.RequestResponseStatus.SUCCESS,
                         "Sequence: " + msg.message.getSequenceNumber(), "Processing response");
                 try {
@@ -297,7 +297,7 @@ public class FrontEnd {
                     System.out.println(e.getMessage());
                 }
                 break;
-            case RESULT:
+            case RESULT: // From RM
                 log.logEntry("FE_HandleMessage", "Result message received", BufferedLog.RequestResponseStatus.SUCCESS,
                         "Sequence: " + msg.message.getSequenceNumber(), "Processing result");
                 System.out.println("Received Result: " + msg.message.getSequenceNumber());
@@ -307,7 +307,7 @@ public class FrontEnd {
                     ClientRequest cr = sequencerQueue.stream().peek(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
                     if (cr != null) {
                         if (msg.message.getPayload() instanceof String str) {
-                            cr.addResponse(msg.endpoint.getAddress(), str);
+                            cr.addResponse(msg.endpoint.getPort(), str);
                             log.logEntry("FE_HandleMessage", "Response added to client request", BufferedLog.RequestResponseStatus.SUCCESS,
                                     "Response: " + str, "Sequence: " + cr.sequenceNumber);
                         }
@@ -317,10 +317,10 @@ public class FrontEnd {
                                 msg.message,
                                 new InetSocketAddress(dotenv.get("FE_IP"), Integer.parseInt(dotenv.get("FE_PORT"))));
                         String str = (String) msg.message.getPayload();
-                        ncr.addResponse(msg.endpoint.getAddress(), str);
+                        ncr.addResponse(msg.endpoint.getPort(), str);
                         ClientRequest reCr = sequencerQueue.stream().peek(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
                         if (reCr != null) {
-                            reCr.addResponse(msg.endpoint.getAddress(), str);
+                            reCr.addResponse(msg.endpoint.getPort(), str);
                         } else {
                             sequencerQueue.add(ncr);
                         }
@@ -329,13 +329,13 @@ public class FrontEnd {
                     }
                 }
                 break;
-            case REQUEST:
+            case REQUEST: // From Client
                 log.logEntry("FE_HandleMessage", "Request message received", BufferedLog.RequestResponseStatus.INFO,
                         "Processing new request", "Forwarding ACK and sending to Sequencer");
                 try {
-                    msg.message.addEndpoint(InetAddress.getByName(dotenv.get("FE_IP")), Integer.parseInt(dotenv.get("FE_PORT")));
-                    msg.message.setMessageType(UDPMessage.MessageType.ACK);
-                    sentMessages.add(new SendMessage(msg));
+//                    msg.message.addEndpoint(InetAddress.getByName(dotenv.get("FE_IP")), Integer.parseInt(dotenv.get("FE_PORT")));
+//                    msg.message.setMessageType(UDPMessage.MessageType.ACK);
+//                    sentMessages.add(new SendMessage(msg));
 
                     UDPMessage rmMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.message.getAction(), 0, msg.message.getEndpoints(), msg.message.getPayload());
                     sentMessages.add(new SendMessage(rmMessage, new InetSocketAddress(InetAddress.getByName(dotenv.get("SEQUENCER_IP")), Integer.parseInt(dotenv.get("SEQUENCER_PORT")))));
@@ -373,7 +373,8 @@ public class FrontEnd {
                                             sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.RESPONSE);
                                     if (!isAlreadyAdded) {
                                         UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), metric.majorityResult);
-                                        sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
+                                        InetSocketAddress endpoint = new InetSocketAddress(msg.getEndpoints().entrySet().iterator().next().getKey(), msg.getEndpoints().entrySet().iterator().next().getValue());
+                                        sentMessages.add(new SendMessage(msg, endpoint));
                                         log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
                                                 metric.majorityResult(), "Final response prepared for request " + "sequenceNumber " + cr.sequenceNumber);
                                     }
@@ -383,8 +384,8 @@ public class FrontEnd {
                                             sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION);
                                     if (!isAlreadyAdded) {
                                         StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
-                                        for (InetAddress addr : metric.errorInetAddress) {
-                                            errorMsg.append(addr.getHostAddress()).append("::");
+                                        for (Integer addr : metric.errorInetAddress) {
+                                            errorMsg.append(addr).append("::");
                                         }
                                         int length = errorMsg.length();
                                         if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
@@ -404,7 +405,16 @@ public class FrontEnd {
                             boolean isAlreadyAdded =
                                     sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.CRASH_NOTIFICATION);
                             if (!isAlreadyAdded) {
-                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                                ReplicateResponseMetric metric = cr.analyzeResponses();
+                                StringBuilder errorPort = new StringBuilder();
+                                for (Integer i : metric.errorInetAddress) {
+                                    errorPort.append(i).append("::");
+                                }
+                                int length = errorPort.length();
+                                if (length >= 2 && errorPort.substring(length - 2).equals("::")) {
+                                    errorPort.setLength(length - 2);
+                                }
+                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), errorPort.toString());
                                 for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
                                     sentMessages.add(new SendMessage(msg, rmEndpoint));
                                 }
