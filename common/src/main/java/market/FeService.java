@@ -79,7 +79,7 @@ public class FeService implements Market {
     @Override
     public String listShareAvailability(String shareType) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {
-            String msg = "listShareAvailability:" + shareType;
+            String msg = "NYK:listShareAvailability:" + shareType;
             sendMessage(msg, tempSocket);
             return receiveMessage(tempSocket);
         } catch (Exception e) {

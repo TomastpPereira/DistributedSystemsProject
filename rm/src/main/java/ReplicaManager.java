@@ -1,13 +1,18 @@
+import io.github.cdimascio.dotenv.Dotenv;
 import network.UDPMessage;
 import market.MarketStateSnapshot;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ReplicaManager {
 
+    private static final Dotenv dotenv = Dotenv.configure()
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
+            .load();
     int RM_PORT;
     InetAddress RM_IP;
     String RM_NAME;
@@ -134,16 +139,32 @@ public class ReplicaManager {
                 handleSequencedRequest(msg);
                 break;
             case CRASH_NOTIFICATION:
-                String crashedRM = (String) msg.getPayload(); // Payload should be the string name of the failed RM
-                System.out.println(crashedRM + "may have crashed");
-                sendPing(crashedRM, String.valueOf(RM_IP), RM_PORTS.get(crashedRM));
+                String payload = (String) msg.getPayload();
+                int crashedPort = Integer.parseInt(payload.split(":")[0]);
+                System.out.println(crashedPort + "may have crashed");
+                String replicaName = "";
+                if (crashedPort == Integer.parseInt(dotenv.get("RM_ONE_PORT")))
+                    replicaName = "RM1";
+                else if (crashedPort == Integer.parseInt(dotenv.get("RM_TWO_PORT")))
+                    replicaName = "RM2";
+                else if (crashedPort == Integer.parseInt(dotenv.get("RM_THREE_PORT")))
+                    replicaName = "RM3";
+                sendPing(crashedPort, replicaName);
                 break;
             case INCORRECT_RESULT_NOTIFICATION:
-                String incorrectRM = (String) msg.getPayload();
-                processFailure(incorrectRM);
+                payload = (String) msg.getPayload();
+                crashedPort = Integer.parseInt(payload.split(":")[0]);
+                replicaName = "";
+                if (crashedPort == Integer.parseInt(dotenv.get("RM_ONE_PORT")))
+                    replicaName = "RM1";
+                else if (crashedPort == Integer.parseInt(dotenv.get("RM_TWO_PORT")))
+                    replicaName = "RM2";
+                else if (crashedPort == Integer.parseInt(dotenv.get("RM_THREE_PORT")))
+                    replicaName = "RM3";
+                processFailure(replicaName);
                 break;
             case VOTE:
-                String payload = (String) msg.getPayload();
+                payload = (String) msg.getPayload();
                 String crashed = payload.split(":")[0];
                 String voter = payload.split(":")[1];
                 handleVote(crashed, voter);
@@ -322,18 +343,14 @@ public class ReplicaManager {
      * Sends a ping to the given RM to ensure that it has not crashed.
      * The sender will wait for 5000ms to receive a response, and will otherwise suspect a crash.
      *
-     * @param replicaName   The name of the crashed RM. Used for voting purposes
-     * @param ip            IP of the crashed RM.
      * @param port          Port of the crashed RM.
      */
-    public void sendPing(String replicaName, String ip, int port){
+    public void sendPing(int port, String replicaName){
         try (DatagramSocket socket = new DatagramSocket()){
             socket.setSoTimeout(5000);
 
-            InetAddress address = InetAddress.getByName(ip);
-
             UDPMessage ping = new UDPMessage(UDPMessage.MessageType.PING, null, 0, null, null);
-            sendUDPMessage(ping, address, port);
+            sendUDPMessage(ping, RM_IP, port);
 
             byte[] buffer = new byte[4096];
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);
@@ -345,7 +362,9 @@ public class ReplicaManager {
                 // Received
             }
 
-        } catch (SocketTimeoutException e) {
+        }
+
+        catch (SocketTimeoutException e) {
             voteForRestart(replicaName);
         } catch (Exception e){
             e.printStackTrace();

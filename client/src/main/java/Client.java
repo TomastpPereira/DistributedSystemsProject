@@ -124,7 +124,7 @@ public class Client {
                     String shareType = scanner.nextLine();
 
                     String marketPrefix = userID.substring(3, 6);
-                    String availability = stub.listShareAvailability(marketPrefix  + ":" + shareType);
+                    String availability = stub.listShareAvailability(shareType);
                     log.logEntry("Client", "listShareAvailability", BufferedLog.RequestResponseStatus.SUCCESS, availability, "Listing shares");
                     System.out.println(availability);
                 }
