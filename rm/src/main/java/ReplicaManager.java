@@ -59,7 +59,7 @@ public class ReplicaManager {
         markets.put("LON", port+20);
         // NY will be at 7031, 7032, 7033
         nyServer = new NYServer(ip, port+30);
-        markets.put("NY", port+30);
+        markets.put("NYK", port+30);
         // Tokyo will be at 7041, 7042, 7043
         tokyoServer = new TokyoServer(ip, port+40);
         markets.put("TOK", port+40);
@@ -291,17 +291,22 @@ public class ReplicaManager {
     // MARKET_NAME should be NY, LON or TOK
     private void deliver(UDPMessage msg){
 
-        Object[] requestData = (Object[]) msg.getPayload();
+        String data = (String) msg.getPayload();
+        System.out.println("Data is " + data);
+        String[] requestData = data.split(":");
         String marketName = (String) requestData[0];
         String action = (String) requestData[1];
 
         // Send data should just be param1:param2:etc
-        Object[] sendData = new Object[requestData.length - 2];
+        StringBuilder sendData = new StringBuilder();
+        //String sendData = "";
         for (int i = 2; i < requestData.length; i++) {
-            sendData[i - 2] = requestData[i];
+            sendData.append(requestData[i]);
+            sendData.append(":");
         }
 
-        UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, action, 0, null, sendData);
+
+        UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, action, 0, null, sendData.toString());
         forwardMessage.setSequenceNumber(msg.getSequenceNumber());
 
         InetAddress address;

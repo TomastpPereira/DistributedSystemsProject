@@ -7,7 +7,6 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.SocketException;
 import java.nio.file.Paths;
 
 /**
@@ -28,7 +27,7 @@ public class UDPServer extends Thread{
         this.market = market;
         try {
             this.socket = new DatagramSocket(port);
-        } catch (SocketException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
