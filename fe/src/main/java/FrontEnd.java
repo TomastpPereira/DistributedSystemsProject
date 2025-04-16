@@ -98,9 +98,9 @@ public class FrontEnd {
                 if (isSendToClient) {
                     isSendToClient = false;
                 }
-                if (System.currentTimeMillis() - this.timestamp > Long.parseLong(dotenv.get("REPLICA_RESPONSE_TIMEOUT"))) {
-                    this.timestamp = System.currentTimeMillis();
-                }
+                this.timestamp = System.currentTimeMillis();
+//                if (System.currentTimeMillis() - this.timestamp > Long.parseLong(dotenv.get("REPLICA_RESPONSE_TIMEOUT"))) {
+//                }
             }
         }
 
@@ -129,6 +129,7 @@ public class FrontEnd {
         public ReplicateResponseMetric analyzeResponses() {
             Map<String, List<Integer>> groupedByResult = new HashMap<>();
 
+            // Group responses by their value
             for (Map.Entry<Integer, String> entry : replicaResponses.entrySet()) {
                 String result = entry.getValue();
                 Integer address = entry.getKey();
@@ -138,6 +139,7 @@ public class FrontEnd {
             String majorityResult = null;
             List<Integer> matched = new ArrayList<>();
 
+            // Determine the majority result based on at least 2 responses
             for (Map.Entry<String, List<Integer>> entry : groupedByResult.entrySet()) {
                 if (entry.getValue().size() >= 2) {
                     majorityResult = entry.getKey();
@@ -147,20 +149,20 @@ public class FrontEnd {
             }
 
             List<Integer> mismatched = new ArrayList<>();
-            if (majorityResult != null && matched.size() != replicaResponses.size()) {
+            if (majorityResult != null) {
+                // Always check all entries against the majorityResult
                 for (Map.Entry<Integer, String> entry : replicaResponses.entrySet()) {
                     if (!entry.getValue().equals(majorityResult)) {
                         mismatched.add(entry.getKey());
                     }
                 }
-            } else if (majorityResult == null) {
+            } else {
+                // When there is no majority, consider all responses mismatched
                 mismatched.addAll(replicaResponses.keySet());
             }
 
-            if (majorityResult != null) {
-                log.logEntry("FE_ClientRequest", "Analyze Responses", BufferedLog.RequestResponseStatus.INFO,
-                        "Majority: " + majorityResult, "Matched: " + matched + " Mismatched: " + mismatched);
-            }
+            log.logEntry("FE_ClientRequest", "Analyze Responses", BufferedLog.RequestResponseStatus.INFO,
+                    "Majority: " + majorityResult, "Matched: " + matched + " Mismatched: " + mismatched);
             return new ReplicateResponseMetric(majorityResult, matched, mismatched);
         }
     }
@@ -423,6 +425,7 @@ public class FrontEnd {
                             }
                         } else {
                             cr.timeOut();
+
                             boolean isAlreadyAdded =
                                     sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.RESULT_TIMEOUT);
                             if (!isAlreadyAdded) {
