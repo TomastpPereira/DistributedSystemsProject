@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 
 public class FrontEnd {
     private static final Dotenv dotenv = Dotenv.configure()
-            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
+            .directory(Paths.get(System.getProperty("user.dir")).toString())
             .load();
     private final List<InetSocketAddress> replicaManagerEndpoints;
     private final DatagramSocket socket;
@@ -203,25 +203,25 @@ public class FrontEnd {
                 if (sentMessages.isEmpty()) {
                     Thread.sleep(500);
                 }
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    System.out.println(e.getMessage());
-                }
-                for (SendMessage msg : sentMessages) {
-                    if (!msg.isSend) {
-                        taskExecutor.submit(() -> {
-                            if (msg.message.getMessageType() == UDPMessage.MessageType.ACK || msg.message.getMessageType() == UDPMessage.MessageType.RESPONSE) {
-                                msg.sent();
-                                sendMessage(msg);
-                                sentMessages.removeIf(m -> m.message.getMessageId().equals(msg.message.getMessageId()));
-                            } else {
-                                msg.sent();
-                                sendMessage(msg);
-                            }
-                        });
-                    } else if ((System.currentTimeMillis() - msg.timeSent) > ACK_TIMEOUT) {
-                        taskExecutor.submit(msg::reSend);
+                Thread.sleep(50);
+
+                synchronized (sentMessages) {
+                    for (SendMessage msg : sentMessages) {
+                        if (!msg.isSend) {
+                            taskExecutor.submit(() -> {
+                                if (msg.message.getMessageType() == UDPMessage.MessageType.ACK ||
+                                        msg.message.getMessageType() == UDPMessage.MessageType.RESPONSE) {
+                                    msg.sent();
+                                    sendMessage(msg);
+                                    sentMessages.removeIf(m -> m.message.getMessageId().equals(msg.message.getMessageId()));
+                                } else {
+                                    msg.sent();
+                                    sendMessage(msg);
+                                }
+                            });
+                        } else if ((System.currentTimeMillis() - msg.timeSent) > ACK_TIMEOUT) {
+                            taskExecutor.submit(msg::reSend);
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -353,54 +353,56 @@ public class FrontEnd {
                 if (sequencerQueue.isEmpty()) {
                     Thread.sleep(500);
                 }
-                for (ClientRequest cr : sequencerQueue) {
-                    if ((System.currentTimeMillis() - cr.timestamp) < REPLICA_RESPONSE_TIMEOUT && !cr.isTimeOut()) {
-                        taskExecutor.submit(() -> {
-                            ReplicateResponseMetric metric = cr.analyzeResponses();
-                            if (metric.matchedInetAddress.size() >= 3 && cr.isSendToClient) {
-                                sequencerQueue.removeIf(c -> Objects.equals(c.sequenceNumber, cr.sequenceNumber));
-                                log.logEntry("FE_CheckResults", "Majority achieved", BufferedLog.RequestResponseStatus.SUCCESS,
-                                        metric.majorityResult(), "Request " + cr.sequenceNumber + " completed");
-                            } else if (metric.matchedInetAddress.size() >= 2 && !cr.isSendToClient) {
-                                cr.sendToClient();
-                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
-                                sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
-                                log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
-                                        metric.majorityResult(), "Final response prepared for request " + "sequenceNumber " + cr.sequenceNumber);
-                            } else if (!metric.errorInetAddress.isEmpty() && cr.isSendToClient) {
-                                cr.sendToServer();
-                                StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
-                                for (InetAddress addr : metric.errorInetAddress) {
-                                    errorMsg.append(addr.getHostAddress()).append("::");
+                synchronized (sequencerQueue) {
+                    for (ClientRequest cr : sequencerQueue) {
+                        if ((System.currentTimeMillis() - cr.timestamp) < REPLICA_RESPONSE_TIMEOUT && !cr.isTimeOut()) {
+                            taskExecutor.submit(() -> {
+                                ReplicateResponseMetric metric = cr.analyzeResponses();
+                                if (metric.matchedInetAddress.size() >= 3 && cr.isSendToClient) {
+                                    sequencerQueue.removeIf(c -> Objects.equals(c.sequenceNumber, cr.sequenceNumber));
+                                    log.logEntry("FE_CheckResults", "Majority achieved", BufferedLog.RequestResponseStatus.SUCCESS,
+                                            metric.majorityResult(), "Request " + cr.sequenceNumber + " completed");
+                                } else if (metric.matchedInetAddress.size() >= 2 && !cr.isSendToClient) {
+                                    cr.sendToClient();
+                                    UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                                    sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
+                                    log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
+                                            metric.majorityResult(), "Final response prepared for request " + "sequenceNumber " + cr.sequenceNumber);
+                                } else if (!metric.errorInetAddress.isEmpty() && cr.isSendToClient) {
+                                    cr.sendToServer();
+                                    StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
+                                    for (InetAddress addr : metric.errorInetAddress) {
+                                        errorMsg.append(addr.getHostAddress()).append("::");
+                                    }
+                                    int length = errorMsg.length();
+                                    if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
+                                        errorMsg.setLength(length - 2);
+                                    }
+                                    UDPMessage msg = new UDPMessage(UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), errorMsg.toString());
+                                    for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                        sentMessages.add(new SendMessage(msg, rmEndpoint));
+                                    }
+                                    log.logEntry("FE_CheckResults", "Mismatch detected", BufferedLog.RequestResponseStatus.FAILURE,
+                                            errorMsg.toString(), "Notified RM for request " + cr.sequenceNumber);
                                 }
-                                int length = errorMsg.length();
-                                if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
-                                    errorMsg.setLength(length - 2);
-                                }
-                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), errorMsg.toString());
-                                for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-                                    sentMessages.add(new SendMessage(msg, rmEndpoint));
-                                }
-                                log.logEntry("FE_CheckResults", "Mismatch detected", BufferedLog.RequestResponseStatus.FAILURE,
-                                        errorMsg.toString(), "Notified RM for request " + cr.sequenceNumber);
+                            });
+                        } else if (!cr.isTimeOut() && !cr.isFull()) {
+                            cr.timeOut();
+                            UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                            for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                sentMessages.add(new SendMessage(msg, rmEndpoint));
                             }
-                        });
-                    } else if (!cr.isTimeOut() && !cr.isFull()) {
-                        cr.timeOut();
-                        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
-                        for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-                            sentMessages.add(new SendMessage(msg, rmEndpoint));
+                            log.logEntry("FE_CheckResults", "Timeout detected", BufferedLog.RequestResponseStatus.FAILURE,
+                                    "No response", "Crash notification sent for request " + cr.sequenceNumber);
+                        } else {
+                            cr.timeOut();
+                            UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESULT_TIMEOUT, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                            for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                sentMessages.add(new SendMessage(msg, rmEndpoint));
+                            }
+                            log.logEntry("FE_CheckResults", "Result timeout", BufferedLog.RequestResponseStatus.FAILURE,
+                                    "Timeout reached", "Timeout notification sent for request " + cr.sequenceNumber);
                         }
-                        log.logEntry("FE_CheckResults", "Timeout detected", BufferedLog.RequestResponseStatus.FAILURE,
-                                "No response", "Crash notification sent for request " + cr.sequenceNumber);
-                    } else {
-                        cr.timeOut();
-                        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESULT_TIMEOUT, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
-                        for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-                            sentMessages.add(new SendMessage(msg, rmEndpoint));
-                        }
-                        log.logEntry("FE_CheckResults", "Result timeout", BufferedLog.RequestResponseStatus.FAILURE,
-                                "Timeout reached", "Timeout notification sent for request " + cr.sequenceNumber);
                     }
                 }
             } catch (Exception e) {
