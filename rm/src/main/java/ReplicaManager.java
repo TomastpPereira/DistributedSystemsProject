@@ -106,7 +106,7 @@ public class ReplicaManager {
                     UDPMessage msg = deserialize(packet.getData(), packet.getLength());
 
                     System.out.println(RM_NAME + "Received Message from " + packet.getPort());
-                    System.out.println("Message is " + msg.getMessageType());
+                    System.out.println("Message is " + msg.getMessageType() + " SQ# " + msg.getSequenceNumber());
 
                     // Copy and change to ACK type to resend
                     if (msg.getMessageType() != UDPMessage.MessageType.ACK) {

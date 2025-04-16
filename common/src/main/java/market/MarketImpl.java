@@ -153,15 +153,15 @@ public class MarketImpl implements Market {
 
 
         // Also register the share in the central repo
-        try {
-            URL wsdlURL = new URL("http://localhost:1096/centralrepository?wsdl");
-            QName qname = new QName("http://DSMS/", "CentralRepositoryImplService");
-            Service service = Service.create(wsdlURL, qname);
-            CentralRepository repository = service.getPort(CentralRepository.class);
-            repository.registerShare(shareID, market);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+//        try {
+//            URL wsdlURL = new URL("http://localhost:1096/centralrepository?wsdl");
+//            QName qname = new QName("http://DSMS/", "CentralRepositoryImplService");
+//            Service service = Service.create(wsdlURL, qname);
+//            CentralRepository repository = service.getPort(CentralRepository.class);
+//            repository.registerShare(shareID, market);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
 
 
         log("_log.txt", LocalDateTime.now() + "- Success addShare - Added share " + shareID + " (" + shareType + ") with capacity " + capacity);
