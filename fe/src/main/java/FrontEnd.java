@@ -94,11 +94,7 @@ public class FrontEnd {
             if (!isFull()) {
                 log.logEntry("FE_ClientRequest", "Response Added", BufferedLog.RequestResponseStatus.SUCCESS,
                         "From " + address.getHostAddress() + " Response: " + response, "Sequence: " + sequenceNumber);
-                if (replicaResponses.containsKey(address)) {
-                    replicaResponses.replace(address, response);
-                } else {
-                    replicaResponses.put(address, response);
-                }
+                replicaResponses.put(address, response);
                 if (isSendToClient) {
                     isSendToClient = false;
                 }
@@ -307,24 +303,30 @@ public class FrontEnd {
                 System.out.println("Received Result: " + msg.message.getSequenceNumber());
                 msg.message.setMessageType(UDPMessage.MessageType.ACK);
                 sentMessages.add(new SendMessage(msg));
-                ClientRequest cr = sequencerQueue.stream().filter(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
-                if (cr != null) {
-                    if (msg.message.getPayload() instanceof String str) {
-                        cr.addResponse(msg.endpoint.getAddress(), str);
-                        log.logEntry("FE_HandleMessage", "Response added to client request", BufferedLog.RequestResponseStatus.SUCCESS,
-                                "Response: " + str, "Sequence: " + cr.sequenceNumber);
-                    }
-                } else {
-                    ClientRequest ncr = new ClientRequest(
-                            msg.message.getSequenceNumber(),
-                            msg.message,
-                            new InetSocketAddress(dotenv.get("FE_IP"), Integer.parseInt(dotenv.get("FE_PORT"))));
-                    if (msg.message.getPayload() instanceof String str) {
+                synchronized (sequencerQueue) {
+                    ClientRequest cr = sequencerQueue.stream().peek(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
+                    if (cr != null) {
+                        if (msg.message.getPayload() instanceof String str) {
+                            cr.addResponse(msg.endpoint.getAddress(), str);
+                            log.logEntry("FE_HandleMessage", "Response added to client request", BufferedLog.RequestResponseStatus.SUCCESS,
+                                    "Response: " + str, "Sequence: " + cr.sequenceNumber);
+                        }
+                    } else {
+                        ClientRequest ncr = new ClientRequest(
+                                msg.message.getSequenceNumber(),
+                                msg.message,
+                                new InetSocketAddress(dotenv.get("FE_IP"), Integer.parseInt(dotenv.get("FE_PORT"))));
+                        String str = (String) msg.message.getPayload();
                         ncr.addResponse(msg.endpoint.getAddress(), str);
+                        ClientRequest reCr = sequencerQueue.stream().peek(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
+                        if (reCr != null) {
+                            reCr.addResponse(msg.endpoint.getAddress(), str);
+                        } else {
+                            sequencerQueue.add(ncr);
+                        }
                         log.logEntry("FE_HandleMessage", "Response added to client request", BufferedLog.RequestResponseStatus.SUCCESS,
                                 "Response: " + str, "Sequence: " + cr.sequenceNumber);
                     }
-                    sequencerQueue.add(ncr);
                 }
                 break;
             case REQUEST:

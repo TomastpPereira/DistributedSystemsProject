@@ -87,6 +87,7 @@ public class UDPMessage implements Serializable {
             this.endpoints = msg.endpoints;
             this.payload = msg.payload;
             this.timestamp = msg.timestamp;
+            this.sequenceNumber = msg.sequenceNumber;
         } catch (ClassNotFoundException e) {
             throw new IOException("Class not found during deserialization", e);
         }
