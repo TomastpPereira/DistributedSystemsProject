@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 
 public class FrontEnd {
     private static final Dotenv dotenv = Dotenv.configure()
-            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
             .load();
     private final List<InetSocketAddress> replicaManagerEndpoints;
     private final DatagramSocket socket;
@@ -29,6 +29,8 @@ public class FrontEnd {
         ACK_TIMEOUT = Long.parseLong(dotenv.get("ACK_TIMEOUT"));
         REPLICA_RESPONSE_TIMEOUT = Long.parseLong(dotenv.get("REPLICA_RESPONSE_TIMEOUT"));
         this.socket = new DatagramSocket(Integer.parseInt(dotenv.get("FE_PORT")));
+        log.logEntry("Constructor", "Initialization complete", BufferedLog.RequestResponseStatus.SUCCESS,
+                "FE listening on port " + dotenv.get("FE_PORT"), "Front-End started");
     }
 
     private class Message {
@@ -62,6 +64,8 @@ public class FrontEnd {
 
         public void reSend() {
             this.isSend = false;
+            log.logEntry("FE_SendLoop", "Re-sending Message", BufferedLog.RequestResponseStatus.DEBUG,
+                    "MessageID: " + message.getMessageId(), "Resend triggered for endpoint " + endpoint);
         }
     }
 
@@ -81,6 +85,8 @@ public class FrontEnd {
             this.replicaResponses = new HashMap<>();
             this.originalMessage = originalMessage;
             this.clientInetSocketAddress = endpoint;
+            log.logEntry("FE_ClientRequest", "New Request", BufferedLog.RequestResponseStatus.INFO,
+                    "Sequence: " + sequenceNumber, "Created client request for endpoint " + endpoint);
         }
 
         public void addResponse(InetAddress address, String response) {
@@ -90,6 +96,8 @@ public class FrontEnd {
                 } else {
                     replicaResponses.put(address, response);
                 }
+                log.logEntry("FE_ClientRequest", "Response Added", BufferedLog.RequestResponseStatus.SUCCESS,
+                        "From " + address.getHostAddress() + " Response: " + response, "Sequence: " + sequenceNumber);
                 if (isSendToClient) {
                     isSendToClient = false;
                 }
@@ -109,6 +117,8 @@ public class FrontEnd {
 
         private void timeOut() {
             this.isTimeOut = true;
+            log.logEntry("FE_ClientRequest", "Request Timeout", BufferedLog.RequestResponseStatus.FAILURE,
+                    "Sequence: " + sequenceNumber, "Request timed out");
         }
 
         public void sendToClient() {
@@ -125,10 +135,7 @@ public class FrontEnd {
             for (Map.Entry<InetAddress, String> entry : replicaResponses.entrySet()) {
                 String result = entry.getValue();
                 InetAddress address = entry.getKey();
-
-                groupedByResult
-                        .computeIfAbsent(result, k -> new ArrayList<>())
-                        .add(address);
+                groupedByResult.computeIfAbsent(result, k -> new ArrayList<>()).add(address);
             }
 
             String majorityResult = null;
@@ -153,6 +160,8 @@ public class FrontEnd {
                 mismatched.addAll(replicaResponses.keySet());
             }
 
+            log.logEntry("FE_ClientRequest", "Analyze Responses", BufferedLog.RequestResponseStatus.INFO,
+                    "Majority: " + majorityResult, "Matched: " + matched + " Mismatched: " + mismatched);
             return new ReplicateResponseMetric(majorityResult, matched, mismatched);
         }
     }
@@ -168,7 +177,11 @@ public class FrontEnd {
             int receiverPort = sendMessage.endpoint.getPort();
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, receiverAddress, receiverPort);
             socket.send(packet);
+            log.logEntry("FE_SendLoop", "Message Sent", BufferedLog.RequestResponseStatus.SUCCESS,
+                    "MessageID: " + sendMessage.message.getMessageId(), "Sent to " + sendMessage.endpoint);
         } catch (Exception e) {
+            log.logEntry("FE_SendLoop", "Error Sending Message", BufferedLog.RequestResponseStatus.FAILURE,
+                    e.getMessage(), "Endpoint: " + sendMessage.endpoint);
             e.printStackTrace(System.err);
         }
     }
@@ -178,6 +191,7 @@ public class FrontEnd {
         new Thread(this::sendLoop).start();
         new Thread(this::processIncomingMessages).start();
         new Thread(this::checkResultFound).start();
+        log.logEntry("FE_Start", "Front-End started", BufferedLog.RequestResponseStatus.SUCCESS, "All threads launched", "");
     }
 
     private void receiveLoop() {
@@ -187,8 +201,13 @@ public class FrontEnd {
             try {
                 socket.receive(packet);
                 UDPMessage msg = new UDPMessage(packet.getData(), packet.getLength());
-                receiveMessage.add(new Message(msg, new InetSocketAddress(packet.getAddress(), packet.getPort())));
+                Message receivedMsg = new Message(msg, new InetSocketAddress(packet.getAddress(), packet.getPort()));
+                receiveMessage.add(receivedMsg);
+                log.logEntry("FE_ReceiveLoop", "Message Received", BufferedLog.RequestResponseStatus.SUCCESS,
+                        "MessageID: " + msg.getMessageId(), "From: " + packet.getAddress());
             } catch (IOException e) {
+                log.logEntry("FE_ReceiveLoop", "IOException", BufferedLog.RequestResponseStatus.FAILURE,
+                        e.getMessage(), "Error in receiving message");
                 System.out.println("IOException in Front-End receiveLoop " + e.getMessage());
             }
         }
@@ -216,6 +235,8 @@ public class FrontEnd {
                     }
                 }
             } catch (Exception e) {
+                log.logEntry("FE_SendLoop", "Exception", BufferedLog.RequestResponseStatus.FAILURE,
+                        e.getMessage(), "Error in send loop");
                 e.printStackTrace(System.err);
             }
         }
@@ -230,6 +251,8 @@ public class FrontEnd {
                 Message msg = receiveMessage.take();
                 taskExecutor.submit(() -> handleUDPMessage(msg));
             } catch (InterruptedException e) {
+                log.logEntry("FE_ProcessMessages", "InterruptedException", BufferedLog.RequestResponseStatus.FAILURE,
+                        e.getMessage(), "Thread interrupted");
                 Thread.currentThread().interrupt();
             }
         }
@@ -247,10 +270,14 @@ public class FrontEnd {
                             ReplicateResponseMetric metric = cr.analyzeResponses();
                             if (metric.matchedInetAddress.size() >= 3 && cr.isSendToClient) {
                                 sequencerQueue.removeIf(c -> Objects.equals(c.sequenceNumber, cr.sequenceNumber));
+                                log.logEntry("FE_CheckResults", "Majority achieved", BufferedLog.RequestResponseStatus.SUCCESS,
+                                        metric.majorityResult(), "Request " + cr.sequenceNumber + " completed");
                             } else if (metric.matchedInetAddress.size() >= 2 && !cr.isSendToClient) {
                                 cr.sendToClient();
                                 UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
                                 sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
+                                log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
+                                        metric.majorityResult(), "Final response prepared for request " + cr.sequenceNumber);
                             } else if (!metric.errorInetAddress.isEmpty() && cr.isSendToClient) {
                                 cr.sendToServer();
                                 StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
@@ -265,6 +292,8 @@ public class FrontEnd {
                                 for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
                                     sentMessages.add(new SendMessage(msg, rmEndpoint));
                                 }
+                                log.logEntry("FE_CheckResults", "Mismatch detected", BufferedLog.RequestResponseStatus.FAILURE,
+                                        errorMsg.toString(), "Notified RM for request " + cr.sequenceNumber);
                             }
                         });
                     } else if (!cr.isTimeOut() && !cr.isFull()) {
@@ -273,15 +302,21 @@ public class FrontEnd {
                         for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
                             sentMessages.add(new SendMessage(msg, rmEndpoint));
                         }
+                        log.logEntry("FE_CheckResults", "Timeout detected", BufferedLog.RequestResponseStatus.FAILURE,
+                                "No response", "Crash notification sent for request " + cr.sequenceNumber);
                     } else {
                         cr.timeOut();
                         UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESULT_TIMEOUT, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
                         for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
                             sentMessages.add(new SendMessage(msg, rmEndpoint));
                         }
+                        log.logEntry("FE_CheckResults", "Result timeout", BufferedLog.RequestResponseStatus.FAILURE,
+                                "Timeout reached", "Timeout notification sent for request " + cr.sequenceNumber);
                     }
                 }
             } catch (Exception e) {
+                log.logEntry("FE_CheckResults", "Exception", BufferedLog.RequestResponseStatus.FAILURE,
+                        e.getMessage(), "Error while checking results");
                 throw new RuntimeException(e);
             }
         }
@@ -289,33 +324,52 @@ public class FrontEnd {
 
     private void handleAck(String msgId) {
         receiveMessage.removeIf(msg -> Objects.equals(msg.message.getMessageId(), msgId));
+        log.logEntry("FE_HandleAck", "ACK handled", BufferedLog.RequestResponseStatus.SUCCESS,
+                "MessageID: " + msgId, "Removed corresponding message from queue");
     }
 
     private void handleUDPMessage(Message msg) {
         switch (msg.message.getMessageType()) {
             case ACK:
+                log.logEntry("FE_HandleMessage", "ACK received", BufferedLog.RequestResponseStatus.SUCCESS,
+                        "MessageID: " + msg.message.getMessageId(), "Processing ACK");
                 handleAck(msg.message.getMessageId());
                 break;
             case RESPONSE:
+                log.logEntry("FE_HandleMessage", "Response received", BufferedLog.RequestResponseStatus.SUCCESS,
+                        "Sequence: " + msg.message.getSequenceNumber(), "Processing response");
                 try {
-                    sequencerQueue.add(new ClientRequest(msg.message.getSequenceNumber(), msg.message, new InetSocketAddress(dotenv.get("FE_IP"), msg.message.getEndpoints().get(InetAddress.getByName(dotenv.get("FE_SERVICE_IP"))))));
+                    sequencerQueue.add(new ClientRequest(
+                            msg.message.getSequenceNumber(),
+                            msg.message,
+                            new InetSocketAddress(dotenv.get("FE_IP"), Integer.parseInt(dotenv.get("FE_PORT")))));
                 } catch (Exception e) {
+                    log.logEntry("FE_HandleMessage", "Error adding to sequencer queue", BufferedLog.RequestResponseStatus.FAILURE,
+                            e.getMessage(), "");
                     System.out.println(e.getMessage());
                 }
                 break;
             case RESULT:
+                log.logEntry("FE_HandleMessage", "Result message received", BufferedLog.RequestResponseStatus.SUCCESS,
+                        "Sequence: " + msg.message.getSequenceNumber(), "Processing result");
                 msg.message.setMessageType(UDPMessage.MessageType.ACK);
                 sentMessages.add(new SendMessage(msg));
-                ClientRequest cr = sequencerQueue.stream().filter(req -> req.sequenceNumber == msg.message.getSequenceNumber()).findFirst().orElse(null);
+                ClientRequest cr = sequencerQueue.stream().filter(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
                 if (cr != null) {
                     if (msg.message.getPayload() instanceof String str) {
                         cr.addResponse(msg.endpoint.getAddress(), str);
+                        log.logEntry("FE_HandleMessage", "Response added to client request", BufferedLog.RequestResponseStatus.SUCCESS,
+                                "Response: " + str, "Sequence: " + cr.sequenceNumber);
                     }
                 } else {
+                    log.logEntry("FE_HandleMessage", "Sequencer number not found", BufferedLog.RequestResponseStatus.FAILURE,
+                            "Sequence: " + msg.message.getSequenceNumber(), "Issue with sequencer");
                     System.out.println("Sequencer number not found! Issue with sequencer");
                 }
                 break;
             case REQUEST:
+                log.logEntry("FE_HandleMessage", "Request message received", BufferedLog.RequestResponseStatus.INFO,
+                        "Processing new request", "Forwarding ACK and sending to Sequencer");
                 try {
                     msg.message.addEndpoint(InetAddress.getByName(dotenv.get("FE_IP")), Integer.parseInt(dotenv.get("FE_PORT")));
                     msg.message.setMessageType(UDPMessage.MessageType.ACK);
@@ -324,10 +378,14 @@ public class FrontEnd {
                     UDPMessage rmMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, msg.message.getAction(), 0, msg.message.getEndpoints(), msg.message.getPayload());
                     sentMessages.add(new SendMessage(rmMessage, new InetSocketAddress(InetAddress.getByName(dotenv.get("SEQUENCER_IP")), Integer.parseInt(dotenv.get("SEQUENCER_PORT")))));
                 } catch (Exception e) {
+                    log.logEntry("FE_HandleMessage", "Exception handling REQUEST", BufferedLog.RequestResponseStatus.FAILURE,
+                            e.getMessage(), "");
                     System.out.println("Exception in Front-End handleUDPMessage " + e.getMessage());
                 }
                 break;
             default:
+                log.logEntry("FE_HandleMessage", "Unknown message type", BufferedLog.RequestResponseStatus.DEBUG,
+                        msg.message.toString(), "Received unknown message");
                 System.out.println("Received unknown message type: " + msg);
         }
     }
@@ -343,7 +401,6 @@ public class FrontEnd {
             } catch (InterruptedException e) {
                 taskExecutor.shutdownNow();
             }
-
             if (log != null) {
                 log.shutdown();
             }
@@ -358,5 +415,7 @@ public class FrontEnd {
         fe.start();
 
         System.out.println("[Front-End] Front-End started.");
+        log.logEntry("FE_Main", "Startup complete", BufferedLog.RequestResponseStatus.SUCCESS,
+                "Front-End service launched", "Ready to process client requests");
     }
 }

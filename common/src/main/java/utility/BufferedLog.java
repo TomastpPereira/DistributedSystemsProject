@@ -17,13 +17,15 @@ public class BufferedLog implements Serializable {
     private volatile boolean running = true;
 
     public enum RequestResponseStatus implements Serializable {
-        SUCCESS, FAILURE;
+        SUCCESS, FAILURE, DEBUG, INFO;
 
         @Override
         public String toString() {
             return switch (this) {
                 case SUCCESS -> "Success";
                 case FAILURE -> "Failure";
+                case DEBUG -> "Debug";
+                case INFO -> "Info";
             };
         }
     }

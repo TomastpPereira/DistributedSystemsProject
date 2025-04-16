@@ -15,7 +15,7 @@ import java.util.Map;
 @WebService(endpointInterface = "market.Market")
 public class FeService implements Market {
     private static final Dotenv dotenv = Dotenv.configure()
-            .directory(Paths.get(System.getProperty("user.dir")).getParent().toString())
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) // .getParent()
             .load();
 
     public FeService() {
@@ -76,7 +76,6 @@ public class FeService implements Market {
         }
     }
 
-    //TODO: Where to get market info?
     @Override
     public String listShareAvailability(String shareType) {
         try (DatagramSocket tempSocket = new DatagramSocket()) {

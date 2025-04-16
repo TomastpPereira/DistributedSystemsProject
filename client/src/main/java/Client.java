@@ -18,7 +18,7 @@ public class Client {
     private static Market connectToFeService() {
         try {
             URL wsdlURL = new URL("http://localhost:" + Dotenv.configure()
-                    .directory(Paths.get(System.getProperty("user.dir")).getParent().toString()).load().get("FE_SERVICE_PORT") + "/feservice?wsdl");
+                    .directory(Paths.get(System.getProperty("user.dir")).toString()).load().get("FE_SERVICE_PORT") + "/feservice?wsdl"); //.getParent()
             QName qname = new QName("http://market/", "FeServiceService");
             Service service = Service.create(wsdlURL, qname);
             return service.getPort(Market.class);
@@ -122,7 +122,8 @@ public class Client {
                     System.out.print("Enter Share Type: ");
                     String shareType = scanner.nextLine();
 
-                    String availability = stub.listShareAvailability(shareType);
+                    String marketPrefix = userID.substring(3, 6);
+                    String availability = stub.listShareAvailability(marketPrefix  + ":" + shareType);
                     log.logEntry("Client", "listShareAvailability", BufferedLog.RequestResponseStatus.SUCCESS, availability, "Listing shares");
                     System.out.println(availability);
                 }
