@@ -94,9 +94,9 @@ public class BufferedLog implements Serializable {
 
         logQueue.offer(logEntry);
 
-        if (logToConsole) {
-            System.out.println(logEntry);
-        }
+//        if (logToConsole) {
+//            System.out.println(logEntry);
+//        }
     }
 
     public void shutdown() {
