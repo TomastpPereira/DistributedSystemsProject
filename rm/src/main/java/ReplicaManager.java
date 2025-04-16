@@ -96,9 +96,12 @@ public class ReplicaManager {
 
                     UDPMessage msg = deserialize(packet.getData(), packet.getLength());
 
+                    System.out.println(RM_NAME + "Received Message from " + packet.getPort());
+
                     // Copy and change to ACK type to resend
                     UDPMessage ackMessage = new UDPMessage(msg);
                     ackMessage.setMessageType(UDPMessage.MessageType.ACK);
+                    System.out.println("Sending ACK");
                     sendUDPMessage(ackMessage, packet.getAddress(), packet.getPort());
 
                     handleMessage(msg);
@@ -118,6 +121,8 @@ public class ReplicaManager {
      */
     private void handleMessage(UDPMessage msg){
         switch(msg.getMessageType()){
+            case ACK:
+                break;
             case REQUEST:
                 handleSequencedRequest(msg);
                 break;
@@ -296,7 +301,7 @@ public class ReplicaManager {
 
         address = RM_IP;
 
-
+        System.out.println("Sending request to " + marketName);
         sendUDPMessage(forwardMessage, address, marketPort);
     }
 

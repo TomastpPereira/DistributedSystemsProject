@@ -21,7 +21,7 @@ public class LondonServer {
         market.initialize("LON", port, String.valueOf(ip), port-20);
         udpEndpoint = new UDPServer(port, market);
         udpEndpoint.start();
-        String ipPublish = "http://" + ip + ":" + port + "/LON";
-        marketEndpoint = Endpoint.publish(ipPublish, market);
+        //String ipPublish = "http://" + ip + ":" + port + "/LON";
+        //marketEndpoint = Endpoint.publish(ipPublish, market);
     }
 }

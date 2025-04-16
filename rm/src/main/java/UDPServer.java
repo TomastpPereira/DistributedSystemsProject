@@ -162,11 +162,16 @@ public class UDPServer extends Thread{
                     InetAddress address = (InetAddress) udpMessage.getEndpoints().keySet().toArray()[0];
                     int port = udpMessage.getEndpoints().get(address);
                     responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
+                    System.out.println("Market sending Message to" + port);
                 }
                 // If there were no endpoints, send the result back to the sender. Used for the internal UDP messages.
                 else {
                     responseData = new DatagramPacket(responseBytes, responseBytes.length, socket.getInetAddress(), socket.getPort());
+                    System.out.println("Market sending Message to" + socket.getPort());
                 }
+
+
+
                 socket.send(responseData);
             }
 

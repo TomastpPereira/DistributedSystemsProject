@@ -21,7 +21,7 @@ public class TokyoServer {
         market.initialize("TOK", port, String.valueOf(ip), port-40);
         udpEndpoint = new UDPServer(port, market);
         udpEndpoint.start();
-        String ipPublish = "http://" + ip + ":" + port + "/Tokyo";
-        marketEndpoint = Endpoint.publish(ipPublish, market);
+        //String ipPublish = "http://" + ip + ":" + port + "/Tokyo";
+        //marketEndpoint = Endpoint.publish(ipPublish, market);
     }
 }
