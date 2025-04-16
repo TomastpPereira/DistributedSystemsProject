@@ -421,7 +421,7 @@ public class MarketImpl implements Market {
         new Thread(() -> {
             try (DatagramSocket socket = new DatagramSocket()) {
 
-                Object[] payload = {buyerID, week, count};
+                String payload = buyerID + ":" + week + ":" + count;
                 UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "CROSS", 0, null, payload);
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -686,7 +686,7 @@ public class MarketImpl implements Market {
         new Thread(() -> {
             try (DatagramSocket socket = new DatagramSocket()) {
 
-                Object[] payload = {shareID, shareType, shareAmount, buyerID};
+                String payload = shareID + ":" + shareType + ":" + shareAmount + ":" + buyerID;
                 UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "PURCHASE", 0, null, payload);
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -733,7 +733,7 @@ public class MarketImpl implements Market {
     public synchronized String requestValidatePurchase(String shareID, String shareType, int shareAmount, String hostReceiver, int port){
         try(DatagramSocket socket = new DatagramSocket()){
 
-            Object[] payload = {shareID, shareType, shareAmount};
+            String payload = shareID + ":" + shareType + ":" + shareAmount;
             UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "BUY_CHECK", 0, null, payload);
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();

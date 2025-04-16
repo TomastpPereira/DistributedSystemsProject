@@ -63,25 +63,28 @@ public class UDPServer extends Thread{
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "SHARES", 0, null, ownedShares);
                         break;
                     case "CROSS":
-                        Object[] crossData = (Object[]) udpMessage.getPayload();
-                        market.updateCrossMarket((String) crossData[0], (int) crossData[1], (int) crossData[2]);
+                        String crossString = (String) udpMessage.getPayload();
+                        String[] crossData = crossString.split(":");
+                        market.updateCrossMarket((String) crossData[0], Integer.parseInt(crossData[1]), Integer.parseInt(crossData[2]));
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "CROSS", 0, null, "Success");
                         break;
                     case "BUY_CHECK":
-                        Object[] buyCheckData = (Object[]) udpMessage.getPayload();
+                        String buyCheckString = (String) udpMessage.getPayload();
+                        String[] buyCheckData = buyCheckString.split(":");
                         String result = market.localValidatePurchase(
                                 (String) buyCheckData[0],
                                 (String) buyCheckData[1],
-                                (int) buyCheckData[2]);
+                                 Integer.parseInt(buyCheckData[2]));
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "BUY_CHECK", 0, null, result);
                         break;
                     case "PURCHASE":
-                        Object[] purchaseData = (Object[]) udpMessage.getPayload();
+                        String purchaseString = (String) udpMessage.getPayload();
+                        String[] purchaseData = purchaseString.split(":");
                         String purchaseResult = market.purchaseShare(
                                 (String) purchaseData[0],
                                 (String) purchaseData[1],
                                 (String) purchaseData[2],
-                                (int) purchaseData[3],
+                                Integer.parseInt(purchaseData[3]),
                                 (String) purchaseData[4]);
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "PURCHASE", 0, null, purchaseResult);
                         break;
