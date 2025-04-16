@@ -120,8 +120,9 @@ public class UDPServer extends Thread{
                         //TODO: FIX CASE
                         params = (String) udpMessage.getPayload();
                         paramsA = params.split(":");
-                        shareType = paramsA[1];
-                        market.listShareAvailability(shareType);
+                        shareType = paramsA[0];
+                        result = market.listShareAvailability(shareType);
+                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "listShareAvailability", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
                         break;
                     case "purchaseShare":
@@ -185,12 +186,11 @@ public class UDPServer extends Thread{
                     address = InetAddress.getByName(dotenv.get("FE_IP"));
                     int port = Integer.parseInt(dotenv.get("FE_PORT"));
                     responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
-                    System.out.println("Market sending Message to" + port);
+                    System.out.println("Market sending Message to " + port);
                 }
                 // Else, send the result back to the sender. Used for the internal UDP messages.
                 else {
-                    responseData = new DatagramPacket(responseBytes, responseBytes.length, socket.getInetAddress(), socket.getPort());
-                    System.out.println("Market sending Message to" + socket.getPort());
+                    responseData = new DatagramPacket(responseBytes, responseBytes.length, request.getAddress(), request.getPort());
                 }
 
 
