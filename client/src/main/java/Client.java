@@ -133,7 +133,7 @@ public class Client {
                     shareID = scanner.nextLine();
                     System.out.print("Enter Share Type to Buy: ");
                     String shareType = scanner.nextLine();
-                    System.out.print("Enter Quantity to Sell: ");
+                    System.out.print("Enter Quantity to Buy: ");
                     int qty = scanner.nextInt();
                     String datemonthyear = shareID.substring(4, shareID.length());
                     String res = stub.purchaseShare(userID, shareID, shareType, qty,  datemonthyear);

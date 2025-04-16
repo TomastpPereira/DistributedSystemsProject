@@ -182,6 +182,7 @@ public class FrontEnd {
             socket.send(packet);
             log.logEntry("FE_SendLoop", "Message Sent", BufferedLog.RequestResponseStatus.SUCCESS,
                     "MessageID: " + sendMessage.message.getMessageId(), "Sent to " + sendMessage.endpoint);
+            System.out.println("Send message to " + receiverAddress + ":" + receiverPort + " " + sendMessage.message);
         } catch (Exception e) {
             log.logEntry("FE_SendLoop", "Error Sending Message", BufferedLog.RequestResponseStatus.FAILURE,
                     e.getMessage(), "Endpoint: " + sendMessage.endpoint);
@@ -243,6 +244,7 @@ public class FrontEnd {
                 receiveMessage.add(receivedMsg);
                 log.logEntry("FE_ReceiveLoop", "Message Received", BufferedLog.RequestResponseStatus.SUCCESS,
                         "MessageID: " + msg.getMessageId(), "From: " + packet.getAddress());
+                System.out.println("Received message from " + packet.getAddress() + ":" + packet.getPort() + " " + msg);
             } catch (IOException e) {
                 log.logEntry("FE_ReceiveLoop", "IOException", BufferedLog.RequestResponseStatus.FAILURE,
                         e.getMessage(), "Error in receiving message");
@@ -365,7 +367,7 @@ public class FrontEnd {
                                             metric.majorityResult(), "Request " + cr.sequenceNumber + " completed");
                                 } else if (metric.matchedInetAddress.size() >= 2 && !cr.isSendToClient) {
                                     cr.sendToClient();
-                                    UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                                    UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), metric.majorityResult);
                                     sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
                                     log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
                                             metric.majorityResult(), "Final response prepared for request " + "sequenceNumber " + cr.sequenceNumber);
