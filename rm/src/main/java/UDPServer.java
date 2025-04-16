@@ -158,6 +158,7 @@ public class UDPServer extends Thread{
 
                 DatagramPacket responseData;
                 // Retrieving the info of the FE to send there and not back to the RM
+                //TODO: Fix endpoints
                 if (udpMessage.getEndpoints() != null) {
                     InetAddress address = (InetAddress) udpMessage.getEndpoints().keySet().toArray()[0];
                     int port = udpMessage.getEndpoints().get(address);

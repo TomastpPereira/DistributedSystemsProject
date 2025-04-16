@@ -2,7 +2,8 @@ package sequencer;
 import io.github.cdimascio.dotenv.Dotenv;
 import network.UDPMessage;
 import network.UDPMessage.MessageType;
-import java.io.IOException;
+
+import java.io.*;
 import java.net.*;
 import java.nio.file.Paths;
 import java.util.*;
@@ -73,13 +74,19 @@ public class Sequencer {
                 DatagramPacket pkt = new DatagramPacket(buffer, buffer.length);
                 socket.receive(pkt);
 
-                UDPMessage msg = new UDPMessage(pkt.getData(), pkt.getLength());
+                //UDPMessage msg = new UDPMessage(pkt.getData(), pkt.getLength());
+                UDPMessage msg = deserialize(pkt.getData(), pkt.getLength());
                 InetSocketAddress sender = new InetSocketAddress(pkt.getAddress(), pkt.getPort());
 
                 switch (msg.getMessageType()) {
                     case REQUEST:
-                        handleFrontEndRequest(msg, sender);
-                        FrontEndAddress = sender;
+                        handleFrontEndRequest(msg);
+                        //FrontEndAddress = sender;
+
+                        UDPMessage ackMessage = new UDPMessage(msg);
+                        ackMessage.setMessageType(MessageType.ACK);
+                        sendUDPMessage(ackMessage, pkt.getAddress(), pkt.getPort());
+
                         break;
                     case ACK:
                         handleReplicaAck(msg, sender);
@@ -93,15 +100,10 @@ public class Sequencer {
         }
     }
 
-    private void handleFrontEndRequest(UDPMessage msg, InetSocketAddress frontEndAddr) {
+    private void handleFrontEndRequest(UDPMessage msg) {
         String id = msg.getMessageId();
         boolean isDuplicate = receivedIds.putIfAbsent(id, System.currentTimeMillis()) != null;
 
-        // always ACK back to front end
-        MessageType origType = msg.getMessageType();
-        msg.setMessageType(MessageType.ACK);
-        sendMessage(msg, frontEndAddr);
-        msg.setMessageType(origType);
 
         if (!isDuplicate) {
             // first time: enqueue for sequencing
@@ -142,9 +144,15 @@ public class Sequencer {
 
                 // INFORM FRONT END OF ASSIGNED SEQUENCE NUMBER -- new requirement for front end
                 // construct a new RESPONSE message carrying the same action/payload + seq#
-                UDPMessage response = msg_request;
+                UDPMessage response = new UDPMessage(msg_request);
                 response.setMessageType(MessageType.RESPONSE);
-                sendMessage(response, FrontEndAddress);
+                InetAddress address;
+                try {
+                    address = InetAddress.getByName(dotenv.get("FE_IP"));
+                } catch (UnknownHostException e) {
+                    throw new RuntimeException(e);
+                };
+                sendUDPMessage(response, address, Integer.parseInt(dotenv.get("FE_PORT")));
 
 
                 // prepare ACK tracking
@@ -184,18 +192,43 @@ public class Sequencer {
 
     private void multicastToReplicas(UDPMessage msg) {
         for (InetSocketAddress replica : REPLICAS) {
-            sendMessage(msg, replica);
+            sendUDPMessage(msg, replica.getAddress(), replica.getPort());
         }
     }
 
-    private void sendMessage(UDPMessage msg, InetSocketAddress dest) {
+//    private void sendMessage(UDPMessage msg, InetSocketAddress dest) {
+//        try {
+//            byte[] data = msg.serialize();
+//            DatagramPacket pkt = new DatagramPacket(
+//                    data, data.length, dest.getAddress(), dest.getPort());
+//            socket.send(pkt);
+//        } catch (IOException e) {
+//            System.err.printf("Failed to send to %s: %s%n", dest, e.getMessage());
+//        }
+//    }
+    private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort){
         try {
-            byte[] data = msg.serialize();
-            DatagramPacket pkt = new DatagramPacket(
-                    data, data.length, dest.getAddress(), dest.getPort());
-            socket.send(pkt);
+            byte[] data = serialize(msg);
+            DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
+            DatagramSocket socket = new DatagramSocket();
+            socket.send(packet);
         } catch (IOException e) {
-            System.err.printf("Failed to send to %s: %s%n", dest, e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    private byte[] serialize(UDPMessage msg) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(msg);
+        oos.flush();
+        return baos.toByteArray();
+    }
+    private UDPMessage deserialize(byte[] data, int length) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
+        try (ObjectInputStream ois = new ObjectInputStream(bais)) {
+            return (UDPMessage) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Class not found during deserialization", e);
         }
     }
 
