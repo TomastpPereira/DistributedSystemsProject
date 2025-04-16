@@ -25,5 +25,5 @@ test {
 
 
 application {
-    mainClass = '' // add main class here
+    mainClass = 'ReplicaManagerMain' // add main class here
 }

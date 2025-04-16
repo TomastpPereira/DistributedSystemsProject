@@ -203,10 +203,16 @@ public class FrontEnd {
                 if (sentMessages.isEmpty()) {
                     Thread.sleep(500);
                 }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    System.out.println(e.getMessage());
+                }
                 for (SendMessage msg : sentMessages) {
                     if (!msg.isSend) {
                         taskExecutor.submit(() -> {
                             if (msg.message.getMessageType() == UDPMessage.MessageType.ACK || msg.message.getMessageType() == UDPMessage.MessageType.RESPONSE) {
+                                msg.sent();
                                 sendMessage(msg);
                                 sentMessages.removeIf(m -> m.message.getMessageId().equals(msg.message.getMessageId()));
                             } else {
@@ -263,6 +269,7 @@ public class FrontEnd {
 
     private void handleAck(String msgId) {
         receiveMessage.removeIf(msg -> Objects.equals(msg.message.getMessageId(), msgId));
+        sentMessages.removeIf(msg -> Objects.equals(msg.message.getMessageId(), msgId));
         log.logEntry("FE_HandleAck", "ACK handled", BufferedLog.RequestResponseStatus.SUCCESS,
                 "MessageID: " + msgId, "Removed corresponding message from queue");
     }
