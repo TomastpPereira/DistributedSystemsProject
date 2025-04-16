@@ -1,5 +1,6 @@
 package market;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import network.UDPMessage;
 
 import javax.jws.WebService;
@@ -12,12 +13,17 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.URL;
+import java.nio.file.Paths;
 import java.rmi.RemoteException;
 import java.util.*;
 import java.time.LocalDateTime;
 
 @WebService(endpointInterface = "market.Market")
 public class MarketImpl implements Market {
+
+    private static final Dotenv dotenv = Dotenv.configure()
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
+            .load();
 
     private HashMap<String, HashMap<String, Share>> shares; // shareType -> (shareID -> info)
     private HashMap<String, HashMap<String, Integer>> buyerRecords; // buyerID -> (shareID -> # shares)
@@ -83,18 +89,18 @@ public class MarketImpl implements Market {
      * Forms a connection between the market and the central repository and registers its port information.
      * Not utilized in the distributed system.
      */
-    private void registerWithCentralRepository(String ip, int port) {
-        try {
-            URL wsdlURL = new URL("http://" + ip + ":" + port + "/centralrepository?wsdl");
-            QName qname = new QName("http://DSMS/", "CentralRepositoryImplService");
-            Service service = Service.create(wsdlURL, qname);
-            CentralRepository repository = service.getPort(CentralRepository.class);
-
-            repository.registerMarketServer(market, "localhost", port);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
+//    private void registerWithCentralRepository(String ip, int port) {
+//        try {
+//            URL wsdlURL = new URL("http://" + ip + ":" + port + "/centralrepository?wsdl");
+//            QName qname = new QName("http://DSMS/", "CentralRepositoryImplService");
+//            Service service = Service.create(wsdlURL, qname);
+//            CentralRepository repository = service.getPort(CentralRepository.class);
+//
+//            repository.registerMarketServer(market, "localhost", port);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+//    }
 
     /**
      * Logging function for the market operations.
@@ -212,15 +218,17 @@ public class MarketImpl implements Market {
             return "Invalid Share Type.";
         }
 
+
+        String address = dotenv.get("RM_ONE_IP");
         // Query other servers
         if (!market.equals("NYK")) {
-            result.append("NYK: ").append(requestShareAvailability(shareType, "localhost",RMPort+30)).append("\n");
+            result.append("NYK: ").append(requestShareAvailability(shareType, address,RMPort+30)).append("\n");
         }
         if (!market.equals("LON")) {
-            result.append("LON: ").append(requestShareAvailability(shareType, "localhost",RMPort+20)).append("\n");
+            result.append("LON: ").append(requestShareAvailability(shareType, address,RMPort+20)).append("\n");
         }
         if (!market.equals("TOK")) {
-            result.append("TOK: ").append(requestShareAvailability(shareType, "localhost",RMPort+40)).append("\n");
+            result.append("TOK: ").append(requestShareAvailability(shareType, address,RMPort+40)).append("\n");
         }
 
         result.append(market).append(": ").append(getLocalShareAvailability(shareType)).append("\n");
@@ -349,15 +357,16 @@ public class MarketImpl implements Market {
             }
             weeklyCrossMarketPurchases.get(buyerID).put(week, crossMarketPurchases + 1);
 
+            String address = dotenv.get("RM_ONE_IP");
             // Share the cross market purchase to others
             if (!market.equals("NYK")) {
-                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", RMPort+30);
+                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, address, RMPort+30);
             }
             if (!market.equals("LON")) {
-                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", RMPort+20);
+                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, address, RMPort+20);
             }
             if (!market.equals("TOK")) {
-                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, "localhost", RMPort+40);
+                shareCrossMarket(buyerID, week, crossMarketPurchases + 1, address, RMPort+40);
             }
 
         }
@@ -465,16 +474,16 @@ public class MarketImpl implements Market {
 
         StringBuilder result = new StringBuilder("Shares owned by " + buyerID + ": \n");
 
-
+        String address = dotenv.get("RM_ONE_IP");
         // Query other servers
         if (!market.equals("NYK")) {
-            result.append("NYK: ").append(requestOwnedShares(buyerID, "localhost", RMPort+30)).append("\n");
+            result.append("NYK: ").append(requestOwnedShares(buyerID, address, RMPort+30)).append("\n");
         }
         if (!market.equals("LON")) {
-            result.append("LON: ").append(requestOwnedShares(buyerID, "localhost", RMPort+20)).append("\n");
+            result.append("LON: ").append(requestOwnedShares(buyerID, address, RMPort+20)).append("\n");
         }
         if (!market.equals("TOK")) {
-            result.append("TOK: ").append(requestOwnedShares(buyerID, "localhost", RMPort+40)).append("\n");
+            result.append("TOK: ").append(requestOwnedShares(buyerID, address, RMPort+40)).append("\n");
         }
 
         result.append(market).append(": ").append(getLocalOwnedShares(buyerID)).append("\n");
@@ -630,14 +639,15 @@ public class MarketImpl implements Market {
         String shareMarket = newID.substring(0,3);
         String purchaseResult = "";
 
+        String address = dotenv.get("RM_ONE_IP");
         if (shareMarket.equals("NYK")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", RMPort+30);
+            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+30);
         }
         if (shareMarket.equals("LON")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", RMPort+20);
+            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+20);
         }
         if (shareMarket.equals("TOK")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, "localhost", RMPort+40);
+            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+40);
         }
 
         // IF Cant Purchase
@@ -652,14 +662,15 @@ public class MarketImpl implements Market {
         sellShare(buyerID, oldID, ownedShares);
             // Send message to other server to buy
         String buyResult = "";
+        String addressSend = dotenv.get("RM_ONE_IP");
         if (shareMarket.equals("NYK")) {
-            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", RMPort+30);
+            sendBuyOrder(buyerID, newID, newType, ownedShares, addressSend, RMPort+30);
         }
         if (shareMarket.equals("LON")) {
-            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", RMPort+20);
+            sendBuyOrder(buyerID, newID, newType, ownedShares, addressSend, RMPort+20);
         }
         if (shareMarket.equals("TOK")) {
-            sendBuyOrder(buyerID, newID, newType, ownedShares, "localhost", RMPort+40);
+            sendBuyOrder(buyerID, newID, newType, ownedShares, addressSend, RMPort+40);
         }
 
 
