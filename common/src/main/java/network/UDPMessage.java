@@ -60,6 +60,7 @@ public class UDPMessage implements Serializable {
         this.endpoints = toCopy.endpoints;
         this.payload = toCopy.payload;
         this.timestamp = System.currentTimeMillis();
+        this.sequenceNumber = toCopy.sequenceNumber;
     }
 
     public UDPMessage(MessageType messageType, String action, int retry,

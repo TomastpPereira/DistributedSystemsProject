@@ -80,16 +80,25 @@ public class Sequencer {
 
                 switch (msg.getMessageType()) {
                     case REQUEST:
-                        handleFrontEndRequest(msg);
+
+                        String id = msg.getMessageId();
+                        boolean isDuplicate = receivedIds.putIfAbsent(id, System.currentTimeMillis()) != null;
+                        if (isDuplicate)
+                            continue;
+
+                        requestQueue.offer(msg);
+//                        handleFrontEndRequest(msg);
                         //FrontEndAddress = sender;
 
                         UDPMessage ackMessage = new UDPMessage(msg);
                         ackMessage.setMessageType(MessageType.ACK);
+                        System.out.println("received new message from FE - Sending ACK - ID" + msg.getMessageId());
                         sendUDPMessage(ackMessage, pkt.getAddress(), pkt.getPort());
 
                         break;
                     case ACK:
                         handleReplicaAck(msg, sender);
+                        System.out.println("Received an ACK from " + pkt.getPort());
                         break;
                     default:
                         // ignore other message types
@@ -101,14 +110,14 @@ public class Sequencer {
     }
 
     private void handleFrontEndRequest(UDPMessage msg) {
-        String id = msg.getMessageId();
-        boolean isDuplicate = receivedIds.putIfAbsent(id, System.currentTimeMillis()) != null;
-
-
-        if (!isDuplicate) {
-            // first time: enqueue for sequencing
-            requestQueue.offer(msg);
-        }
+//        String id = msg.getMessageId();
+//        boolean isDuplicate = receivedIds.putIfAbsent(id, System.currentTimeMillis()) != null;
+//
+//
+//        if (!isDuplicate) {
+//            // first time: enqueue for sequencing
+//            requestQueue.offer(msg);
+//        }
         // else: duplicate which we already ACKed, so drop
     }
 
@@ -116,6 +125,9 @@ public class Sequencer {
         long seq = msg.getSequenceNumber();
         CountDownLatch latch = ackLatches.get(seq);
         Set<InetSocketAddress> seen = ackTrackers.get(seq);
+
+        System.out.println("Latch" + latch);
+        System.out.println("Seen" + seen);
 
         if (latch != null && seen != null) {
             // only count down once per replica
@@ -210,7 +222,6 @@ public class Sequencer {
         try {
             byte[] data = serialize(msg);
             DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
-            DatagramSocket socket = new DatagramSocket();
             socket.send(packet);
         } catch (IOException e) {
             e.printStackTrace();
