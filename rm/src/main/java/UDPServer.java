@@ -1,3 +1,4 @@
+import io.github.cdimascio.dotenv.Dotenv;
 import market.MarketImpl;
 import market.MarketStateSnapshot;
 import network.UDPMessage;
@@ -6,6 +7,7 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.nio.file.Paths;
 
 /**
  * UDP Server which allows for the messages to be passed between markets.
@@ -14,6 +16,10 @@ public class UDPServer extends Thread{
 
     private final int port;
     private final MarketImpl market;
+
+    private static final Dotenv dotenv = Dotenv.configure()
+            .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
+            .load();
 
     public UDPServer(int port, MarketImpl market){
         this.port = port;
@@ -158,10 +164,10 @@ public class UDPServer extends Thread{
 
                 DatagramPacket responseData;
                 // Retrieving the info of the FE to send there and not back to the RM
-                //TODO: Fix endpoints
-                if (udpMessage.getEndpoints() != null) {
-                    InetAddress address = (InetAddress) udpMessage.getEndpoints().keySet().toArray()[0];
-                    int port = udpMessage.getEndpoints().get(address);
+                if (udpMessage.getMessageType() == UDPMessage.MessageType.REQUEST) {
+                    InetAddress address;
+                    address = InetAddress.getByName(dotenv.get("FE_IP"));
+                    int port = Integer.parseInt(dotenv.get("FE_PORT"));
                     responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
                     System.out.println("Market sending Message to" + port);
                 }

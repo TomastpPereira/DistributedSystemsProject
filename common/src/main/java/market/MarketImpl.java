@@ -259,7 +259,7 @@ public class MarketImpl implements Market {
     private synchronized String requestShareAvailability(String shareType, String hostReceiver, int portReceiver){
         try(DatagramSocket socket = new DatagramSocket()){
 
-            UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "AVAILABILITY", 0, null, shareType);
+            UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "AVAILABILITY", 0, null, shareType);
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ObjectOutputStream oos = new ObjectOutputStream(baos);
@@ -422,7 +422,7 @@ public class MarketImpl implements Market {
             try (DatagramSocket socket = new DatagramSocket()) {
 
                 Object[] payload = {buyerID, week, count};
-                UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "CROSS", 0, null, payload);
+                UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "CROSS", 0, null, payload);
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 ObjectOutputStream oos = new ObjectOutputStream(baos);
@@ -515,7 +515,7 @@ public class MarketImpl implements Market {
     private synchronized String requestOwnedShares(String buyerID, String hostReceiver, int portReceiver){
         try(DatagramSocket socket = new DatagramSocket()){
 
-            UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "SHARES", 0, null, buyerID);
+            UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "SHARES", 0, null, buyerID);
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ObjectOutputStream oos = new ObjectOutputStream(baos);
@@ -687,7 +687,7 @@ public class MarketImpl implements Market {
             try (DatagramSocket socket = new DatagramSocket()) {
 
                 Object[] payload = {shareID, shareType, shareAmount, buyerID};
-                UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "PURCHASE", 0, null, payload);
+                UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "PURCHASE", 0, null, payload);
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 ObjectOutputStream oos = new ObjectOutputStream(baos);
@@ -734,7 +734,7 @@ public class MarketImpl implements Market {
         try(DatagramSocket socket = new DatagramSocket()){
 
             Object[] payload = {shareID, shareType, shareAmount};
-            UDPMessage message = new UDPMessage(UDPMessage.MessageType.REQUEST, "BUY_CHECK", 0, null, payload);
+            UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "BUY_CHECK", 0, null, payload);
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ObjectOutputStream oos = new ObjectOutputStream(baos);

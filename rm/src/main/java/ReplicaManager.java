@@ -22,6 +22,7 @@ public class ReplicaManager {
     private Map<String, Set<String>> votesForReplica;
     private Map<String, Integer> failureCount;
     private Map<String, Integer> markets;
+    private final DatagramSocket socket;
 
     private boolean fresh;
 
@@ -44,8 +45,11 @@ public class ReplicaManager {
         RETURN_INFO.put(RM_IP, RM_PORT);
         fresh = true;
 
-
-
+        try {
+            socket = new DatagramSocket(RM_PORT);
+        } catch (SocketException e) {
+            throw new RuntimeException(e);
+        }
 
 
         // Launching Replica
@@ -87,7 +91,7 @@ public class ReplicaManager {
      */
     public void startListener(){
         new Thread(()-> {
-            try (DatagramSocket socket = new DatagramSocket(this.RM_PORT)){
+            try {
                 System.out.println("initialized");
                 while (true){
                     byte[] buffer = new byte[4096];
@@ -97,12 +101,15 @@ public class ReplicaManager {
                     UDPMessage msg = deserialize(packet.getData(), packet.getLength());
 
                     System.out.println(RM_NAME + "Received Message from " + packet.getPort());
+                    System.out.println("Message is " + msg.getMessageType());
 
                     // Copy and change to ACK type to resend
-                    UDPMessage ackMessage = new UDPMessage(msg);
-                    ackMessage.setMessageType(UDPMessage.MessageType.ACK);
-                    System.out.println("Sending ACK");
-                    sendUDPMessage(ackMessage, packet.getAddress(), packet.getPort());
+                    if (msg.getMessageType() != UDPMessage.MessageType.ACK) {
+                        UDPMessage ackMessage = new UDPMessage(msg);
+                        ackMessage.setMessageType(UDPMessage.MessageType.ACK);
+                        System.out.println("Sending ACK");
+                        sendUDPMessage(ackMessage, packet.getAddress(), packet.getPort());
+                    }
 
                     handleMessage(msg);
                 }
@@ -128,6 +135,7 @@ public class ReplicaManager {
                 break;
             case CRASH_NOTIFICATION:
                 String crashedRM = (String) msg.getPayload(); // Payload should be the string name of the failed RM
+                System.out.println(crashedRM + "may have crashed");
                 sendPing(crashedRM, String.valueOf(RM_IP), RM_PORTS.get(crashedRM));
                 break;
             case INCORRECT_RESULT_NOTIFICATION:
@@ -198,7 +206,6 @@ public class ReplicaManager {
         try {
             byte[] data = serialize(msg);
             DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
-            DatagramSocket socket = new DatagramSocket();
             socket.send(packet);
         } catch (IOException e) {
             e.printStackTrace();
@@ -246,6 +253,7 @@ public class ReplicaManager {
         synchronized (this){
 
             long sequenceNum = msg.getSequenceNumber();
+            System.out.println(RM_NAME + "Processing Request" + sequenceNum);
 
             // RM has now processed a request.
             if (fresh)

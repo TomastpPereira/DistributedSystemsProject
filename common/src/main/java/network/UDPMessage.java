@@ -18,6 +18,7 @@ public class UDPMessage implements Serializable {
 
     public enum MessageType {
         REQUEST,
+        INNER_REQUEST, // For inter market operations
         RESPONSE,
         ACK,
         VOTE,
