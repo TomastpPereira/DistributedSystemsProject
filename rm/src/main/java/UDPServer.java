@@ -47,6 +47,11 @@ public class UDPServer extends Thread{
 
                 UDPMessage response = null;
 
+                if (udpMessage.getMessageType() == UDPMessage.MessageType.ACK) {
+                    System.out.println("Received ACK from FE");
+                    continue;
+                }
+
                 switch(udpMessage.getAction()){
                     case "SHARES":
                         String buyerID = (String) udpMessage.getPayload();
