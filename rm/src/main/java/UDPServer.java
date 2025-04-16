@@ -8,7 +8,10 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * UDP Server which allows for the messages to be passed between markets.
@@ -170,6 +173,11 @@ public class UDPServer extends Thread{
                     default:
                         break;
                 }
+
+                InetAddress addressEnd = InetAddress.getByName(dotenv.get("RM_ONE_IP"));
+                Map<InetAddress, Integer> endpoint = new HashMap<>();
+                endpoint.put(addressEnd, port);
+                response.setEndpoints(endpoint);
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 ObjectOutputStream oos = new ObjectOutputStream(baos);

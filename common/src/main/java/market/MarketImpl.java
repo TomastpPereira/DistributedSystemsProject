@@ -570,7 +570,7 @@ public class MarketImpl implements Market {
                     + shareID + ", shareCount " + shareCount;
         }
 
-        if (ownedShares <= shareCount) {
+        if (ownedShares >= shareCount) {
             buyerRecords.get(buyerID).put(shareID, ownedShares - shareCount);
 
             // Add back to market availability
