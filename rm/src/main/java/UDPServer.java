@@ -1,4 +1,5 @@
 import io.github.cdimascio.dotenv.Dotenv;
+import market.Market;
 import market.MarketImpl;
 import market.MarketStateSnapshot;
 import network.UDPMessage;
@@ -96,7 +97,7 @@ public class UDPServer extends Thread{
                         response = new UDPMessage(UDPMessage.MessageType.ACK, "OK", 0, null, null);
                         break;
                     case "addShare":
-                        System.out.println("Market is Processing Seq#" + udpMessage.getSequenceNumber());
+                        System.out.println("Market " + port + " is Processing Seq#" + udpMessage.getSequenceNumber());
                         String params = (String) udpMessage.getPayload();
                         String[] paramsA = params.split(":");
                         String shareID = paramsA[0];
@@ -177,7 +178,7 @@ public class UDPServer extends Thread{
                 byte[] responseBytes = baos.toByteArray();
 
                 DatagramPacket responseData;
-                // Retrieving the info of the FE to send there and not back to the RM
+                // Send to FE if this is a result
                 assert response != null;
                 if (response.getMessageType() == UDPMessage.MessageType.RESULT) {
                     InetAddress address;
@@ -186,7 +187,7 @@ public class UDPServer extends Thread{
                     responseData = new DatagramPacket(responseBytes, responseBytes.length, address, port);
                     System.out.println("Market sending Message to" + port);
                 }
-                // If there were no endpoints, send the result back to the sender. Used for the internal UDP messages.
+                // Else, send the result back to the sender. Used for the internal UDP messages.
                 else {
                     responseData = new DatagramPacket(responseBytes, responseBytes.length, socket.getInetAddress(), socket.getPort());
                     System.out.println("Market sending Message to" + socket.getPort());
