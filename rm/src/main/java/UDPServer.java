@@ -102,6 +102,7 @@ public class UDPServer extends Thread{
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "removeShare", 0, null, result);
                         break;
                     case "listShareAvailability":
+                        //TODO: FIX CASE
                         params = (String) udpMessage.getPayload();
                         paramsA = params.split(":");
                         shareType = paramsA[1];
@@ -164,7 +165,7 @@ public class UDPServer extends Thread{
 
                 DatagramPacket responseData;
                 // Retrieving the info of the FE to send there and not back to the RM
-                if (udpMessage.getMessageType() == UDPMessage.MessageType.REQUEST) {
+                if (response.getMessageType() == UDPMessage.MessageType.RESULT) {
                     InetAddress address;
                     address = InetAddress.getByName(dotenv.get("FE_IP"));
                     int port = Integer.parseInt(dotenv.get("FE_PORT"));

@@ -302,6 +302,7 @@ public class FrontEnd {
             case RESULT:
                 log.logEntry("FE_HandleMessage", "Result message received", BufferedLog.RequestResponseStatus.SUCCESS,
                         "Sequence: " + msg.message.getSequenceNumber(), "Processing result");
+                System.out.println("Received Result: " + msg.message.getSequenceNumber());
                 msg.message.setMessageType(UDPMessage.MessageType.ACK);
                 sentMessages.add(new SendMessage(msg));
                 ClientRequest cr = sequencerQueue.stream().filter(req -> req.sequenceNumber.equals(msg.message.getSequenceNumber())).findFirst().orElse(null);
