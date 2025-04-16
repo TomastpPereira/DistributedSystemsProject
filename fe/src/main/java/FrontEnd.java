@@ -367,44 +367,60 @@ public class FrontEnd {
                                             metric.majorityResult(), "Request " + cr.sequenceNumber + " completed");
                                 } else if (metric.matchedInetAddress.size() >= 2 && !cr.isSendToClient) {
                                     cr.sendToClient();
-                                    UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), metric.majorityResult);
-                                    sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
-                                    log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
-                                            metric.majorityResult(), "Final response prepared for request " + "sequenceNumber " + cr.sequenceNumber);
+                                    boolean isAlreadyAdded =
+                                            sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.RESPONSE);
+                                    if (!isAlreadyAdded) {
+                                        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESPONSE, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), metric.majorityResult);
+                                        sentMessages.add(new SendMessage(msg, cr.clientInetSocketAddress));
+                                        log.logEntry("FE_CheckResults", "Aggregated responses", BufferedLog.RequestResponseStatus.SUCCESS,
+                                                metric.majorityResult(), "Final response prepared for request " + "sequenceNumber " + cr.sequenceNumber);
+                                    }
                                 } else if (!metric.errorInetAddress.isEmpty() && cr.isSendToClient) {
                                     cr.sendToServer();
-                                    StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
-                                    for (InetAddress addr : metric.errorInetAddress) {
-                                        errorMsg.append(addr.getHostAddress()).append("::");
+                                    boolean isAlreadyAdded =
+                                            sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION);
+                                    if (!isAlreadyAdded) {
+                                        StringBuilder errorMsg = new StringBuilder("Incorrect Message::");
+                                        for (InetAddress addr : metric.errorInetAddress) {
+                                            errorMsg.append(addr.getHostAddress()).append("::");
+                                        }
+                                        int length = errorMsg.length();
+                                        if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
+                                            errorMsg.setLength(length - 2);
+                                        }
+                                        UDPMessage msg = new UDPMessage(UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), errorMsg.toString());
+                                        for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                            sentMessages.add(new SendMessage(msg, rmEndpoint));
+                                        }
+                                        log.logEntry("FE_CheckResults", "Mismatch detected", BufferedLog.RequestResponseStatus.FAILURE,
+                                                errorMsg.toString(), "Notified RM for request " + cr.sequenceNumber);
                                     }
-                                    int length = errorMsg.length();
-                                    if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
-                                        errorMsg.setLength(length - 2);
-                                    }
-                                    UDPMessage msg = new UDPMessage(UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), errorMsg.toString());
-                                    for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-                                        sentMessages.add(new SendMessage(msg, rmEndpoint));
-                                    }
-                                    log.logEntry("FE_CheckResults", "Mismatch detected", BufferedLog.RequestResponseStatus.FAILURE,
-                                            errorMsg.toString(), "Notified RM for request " + cr.sequenceNumber);
                                 }
                             });
                         } else if (!cr.isTimeOut() && !cr.isFull()) {
                             cr.timeOut();
-                            UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
-                            for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-                                sentMessages.add(new SendMessage(msg, rmEndpoint));
+                            boolean isAlreadyAdded =
+                                    sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.CRASH_NOTIFICATION);
+                            if (!isAlreadyAdded) {
+                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                                for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                    sentMessages.add(new SendMessage(msg, rmEndpoint));
+                                }
+                                log.logEntry("FE_CheckResults", "Timeout detected", BufferedLog.RequestResponseStatus.FAILURE,
+                                        "No response", "Crash notification sent for request " + cr.sequenceNumber);
                             }
-                            log.logEntry("FE_CheckResults", "Timeout detected", BufferedLog.RequestResponseStatus.FAILURE,
-                                    "No response", "Crash notification sent for request " + cr.sequenceNumber);
                         } else {
                             cr.timeOut();
-                            UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESULT_TIMEOUT, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
-                            for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
-                                sentMessages.add(new SendMessage(msg, rmEndpoint));
+                            boolean isAlreadyAdded =
+                                    sentMessages.stream().anyMatch(s -> s.message.getSequenceNumber() == cr.sequenceNumber && s.message.getMessageType() == UDPMessage.MessageType.RESULT_TIMEOUT);
+                            if (!isAlreadyAdded) {
+                                UDPMessage msg = new UDPMessage(UDPMessage.MessageType.RESULT_TIMEOUT, cr.originalMessage.getAction(), 0, cr.originalMessage.getEndpoints(), cr.originalMessage.getSequenceNumber(), cr.originalMessage.getPayload());
+                                for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                    sentMessages.add(new SendMessage(msg, rmEndpoint));
+                                }
+                                log.logEntry("FE_CheckResults", "Result timeout", BufferedLog.RequestResponseStatus.FAILURE,
+                                        "Timeout reached", "Timeout notification sent for request " + cr.sequenceNumber);
                             }
-                            log.logEntry("FE_CheckResults", "Result timeout", BufferedLog.RequestResponseStatus.FAILURE,
-                                    "Timeout reached", "Timeout notification sent for request " + cr.sequenceNumber);
                         }
                     }
                 }
