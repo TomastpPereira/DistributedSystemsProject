@@ -135,7 +135,7 @@ public class MarketImpl implements Market {
             log("_log.txt", LocalDateTime.now() + "- Failed addShare: Invalid Share Type - shareID:" + shareID + ", shareType: "
                     + shareType + ", capacity: " + capacity);
 
-            return LocalDateTime.now() + "- Failed addShare: Invalid Share Type - shareID:" + shareID + ", shareType: "
+            return "- Failed addShare: Invalid Share Type - shareID:" + shareID + ", shareType: "
                     + shareType + ", capacity: " + capacity;
         }
 
@@ -143,7 +143,7 @@ public class MarketImpl implements Market {
         if (!shareMarketPrefix.equals(market)){
             log("_log.txt", LocalDateTime.now() + "- Failed addShare: Incorrect Market - shareID:" + shareID + ", shareType: "
                     + shareType + ", capacity: " + capacity);
-            return LocalDateTime.now() + "- Failed addShare: Incorrect Market - shareID:" + shareID + ", shareType: "
+            return "- Failed addShare: Incorrect Market - shareID:" + shareID + ", shareType: "
                     + shareType + ", capacity: " + capacity;
         }
 
@@ -151,7 +151,7 @@ public class MarketImpl implements Market {
         if (shareMap.containsKey(shareID)) {
             log("_log.txt", LocalDateTime.now() + "- Failed addShare: Share already Exists - shareID:" + shareID + ", shareType: "
                     + shareType + ", capacity: " + capacity);
-            return LocalDateTime.now() + "- Failed addShare: Share already Exists - shareID:" + shareID + ", shareType: "
+            return "- Failed addShare: Share already Exists - shareID:" + shareID + ", shareType: "
                     + shareType + ", capacity: " + capacity;
         }
 
@@ -171,7 +171,7 @@ public class MarketImpl implements Market {
 
 
         log("_log.txt", LocalDateTime.now() + "- Success addShare - Added share " + shareID + " (" + shareType + ") with capacity " + capacity);
-        return LocalDateTime.now() + "- Success addShare - Added share " + shareID + " (" + shareType + ") with capacity " + capacity;
+        return "- Success addShare - Added share " + shareID + " (" + shareType + ") with capacity " + capacity;
     }
 
     /**
@@ -186,18 +186,18 @@ public class MarketImpl implements Market {
 
         if (!shares.containsKey(shareType)) {
             log("_log.txt", LocalDateTime.now() + "- Failed removeShare: Invalid share type - shareID " + shareID + ", shareType" + shareType);
-            return LocalDateTime.now() + "- Failed removeShare: Invalid share type - shareID " + shareID + ", shareType" + shareType;
+            return "- Failed removeShare: Invalid share type - shareID " + shareID + ", shareType" + shareType;
         }
 
         Map<String, Share> shareMap = shares.get(shareType);
         if (!shareMap.containsKey(shareID)) {
             log("_log.txt", LocalDateTime.now() + "- Failed removeShare: Share does not Exist - shareID " + shareID + ", shareType" + shareType);
-            return LocalDateTime.now() + "- Failed removeShare: Share does not Exist - shareID " + shareID + ", shareType" + shareType;
+            return "- Failed removeShare: Share does not Exist - shareID " + shareID + ", shareType" + shareType;
         }
 
         shareMap.remove(shareID);
         log("_log.txt", LocalDateTime.now() + "- Success removeShare - Removed " + shareID + " (" + shareType + ")");
-        return LocalDateTime.now() + "- Success removeShare - Removed " + shareID + " (" + shareType + ")";
+        return "- Success removeShare - Removed " + shareID + " (" + shareType + ")";
 
     }
 
@@ -328,7 +328,7 @@ public class MarketImpl implements Market {
         if (!shares.containsKey(shareType) || !shares.get(shareType).containsKey(shareID)) {
             log("_log.txt", LocalDateTime.now() + " - Failed purchaseShare: Invalid Share - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear);
-            return LocalDateTime.now() + " - Failed purchaseShare: Invalid Share - buyerID " + buyerID + ", shareID "
+            return " - Failed purchaseShare: Invalid Share - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear;
         }
 
@@ -338,7 +338,7 @@ public class MarketImpl implements Market {
         if (dailyPurchases.get(buyerID).get(datemonthyear).contains(shareType)){
             log("_log.txt", LocalDateTime.now() + " - Failed purchaseShare: Buyer Has Already Purchased This Type Today - buyerID "
                     + buyerID + ", shareID " + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear);
-            return LocalDateTime.now() + " - Failed purchaseShare: Buyer Has Already Purchased This Type Today - buyerID "
+            return " - Failed purchaseShare: Buyer Has Already Purchased This Type Today - buyerID "
                     + buyerID + ", shareID " + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear;
         }
 
@@ -352,7 +352,7 @@ public class MarketImpl implements Market {
             if (crossMarketPurchases >= 3){
                 log("_log.txt", LocalDateTime.now() + " - Failed purchaseShare: Buyer Exceeded Weekly Cross Market Purchases - buyerID "
                         + buyerID + ", shareID " + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear);
-                return LocalDateTime.now() + " - Failed purchaseShare: Buyer Exceeded Weekly Cross Market Purchases - buyerID "
+                return " - Failed purchaseShare: Buyer Exceeded Weekly Cross Market Purchases - buyerID "
                         + buyerID + ", shareID " + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear;
             }
             weeklyCrossMarketPurchases.get(buyerID).put(week, crossMarketPurchases + 1);
@@ -377,7 +377,7 @@ public class MarketImpl implements Market {
         if (purchasable == 0) {
             log("_log.txt", LocalDateTime.now() + " - Failed purchaseShare: No Available Shares - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear);
-            return LocalDateTime.now() + " - Failed purchaseShare: No Available Shares - buyerID " + buyerID + ", shareID "
+            return " - Failed purchaseShare: No Available Shares - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear;
         }
 
@@ -397,7 +397,7 @@ public class MarketImpl implements Market {
 
         log("_log.txt", LocalDateTime.now() + " - Success purchaseShare: Bought " + purchasable + " from Available Shares - buyerID " + buyerID + ", shareID "
                 + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear);
-        return LocalDateTime.now() + " - Success purchaseShare: Bought " + purchasable + " from Available Shares - buyerID " + buyerID + ", shareID "
+        return " - Success purchaseShare: Bought " + purchasable + " from Available Shares - buyerID " + buyerID + ", shareID "
                 + shareID + ", shareType" + shareType + ", shareCount" + shareCount + ", datemonthyear " + datemonthyear;
     }
 
@@ -567,7 +567,7 @@ public class MarketImpl implements Market {
         if (!buyerRecords.containsKey(buyerID) || !buyerRecords.get(buyerID).containsKey(shareID)) {
             log("_log.txt", LocalDateTime.now() + " - Failed sellShares: Share not Owned - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareCount " + shareCount);
-            return LocalDateTime.now() + " - Failed sellShares: Share not Owned - buyerID " + buyerID + ", shareID "
+            return " - Failed sellShares: Share not Owned - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareCount " + shareCount;
         }
 
@@ -575,7 +575,7 @@ public class MarketImpl implements Market {
         if (ownedShares == 0){
             log("_log.txt", LocalDateTime.now() + " - Failed sellShares: Share not Owned - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareCount " + shareCount);
-            return LocalDateTime.now() + " - Failed sellShares: Share not Owned - buyerID " + buyerID + ", shareID "
+            return " - Failed sellShares: Share not Owned - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareCount " + shareCount;
         }
 
@@ -588,7 +588,7 @@ public class MarketImpl implements Market {
                     shareMap.get(shareID).availableCount += shareCount;
                     log("_log.txt", LocalDateTime.now() + " - Success sellShares - buyerID " + buyerID + ", shareID "
                             + shareID + ", shareCount " + shareCount);
-                    return LocalDateTime.now() + " - Success sellShares - buyerID " + buyerID + ", shareID "
+                    return " - Success sellShares - buyerID " + buyerID + ", shareID "
                             + shareID + ", shareCount " + shareCount;
                 }
             }
@@ -597,7 +597,7 @@ public class MarketImpl implements Market {
         else {
             log("_log.txt", LocalDateTime.now() + " - Failed sellShares: Selling More Than Owned - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareCount " + shareCount);
-            return LocalDateTime.now() + " - Failed sellShares: Selling More Than Owned - buyerID " + buyerID + ", shareID "
+            return " - Failed sellShares: Selling More Than Owned - buyerID " + buyerID + ", shareID "
                     + shareID + ", shareCount " + shareCount;
         }
 
@@ -628,7 +628,7 @@ public class MarketImpl implements Market {
         if (!buyerRecords.containsKey(buyerID) || !buyerRecords.get(buyerID).containsKey(oldID)) {
             log("_log.txt", LocalDateTime.now() + " - Failed swapShares: Share not Owned - buyerID " + buyerID + ", oldID "
                     + oldID);
-            return (LocalDateTime.now() + " - Failed swapShares: Share not Owned - buyerID " + buyerID + ", oldID "
+            return (" - Failed swapShares: Share not Owned - buyerID " + buyerID + ", oldID "
                     + oldID);
         }
 
@@ -654,7 +654,7 @@ public class MarketImpl implements Market {
         if (!purchaseResult.equals("Success")){
             log("_log.txt", LocalDateTime.now() + " - Failed swapShares: Purchase is Not Possible - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
                     + oldType + ", newID " + newID + ", newType" + newType);
-            return LocalDateTime.now() + " - Failed swapShares: Purchase is Not Possible - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
+            return " - Failed swapShares: Purchase is Not Possible - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
                     + oldType + ", newID " + newID + ", newType" + newType;
         }
 
@@ -676,7 +676,7 @@ public class MarketImpl implements Market {
 
         log("_log.txt", LocalDateTime.now() + " - Success swapShares - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
                 + oldType + ", newID " + newID + ", newType" + newType);
-        return LocalDateTime.now() + " - Success swapShares - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
+        return " - Success swapShares - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
                 + oldType + ", newID " + newID + ", newType" + newType;
     }
 

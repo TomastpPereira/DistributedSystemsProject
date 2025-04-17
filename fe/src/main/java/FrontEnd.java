@@ -143,6 +143,7 @@ public class FrontEnd {
             for (Map.Entry<String, List<Integer>> entry : groupedByResult.entrySet()) {
                 if (entry.getValue().size() >= 2) {
                     majorityResult = entry.getKey();
+                    System.out.println("Majority Key: " + majorityResult); //TODO
                     matched = new ArrayList<>(entry.getValue());
                     break;
                 }

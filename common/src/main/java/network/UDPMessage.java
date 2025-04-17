@@ -170,7 +170,7 @@ public class UDPMessage implements Serializable {
                 ", retry=" + retry +
                 ", endpoints=" + endpoints +
                 ", payload=" + payload +
-                ", timestamp=" + timestamp +
+                //", timestamp=" + timestamp +
                 '}';
     }
 }

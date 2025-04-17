@@ -53,6 +53,20 @@ public class UDPServer extends Thread{
 
                 if (udpMessage.getMessageType() == UDPMessage.MessageType.ACK) {
                     System.out.println("Market Received ACK from FE");
+
+                    // Send an ACK for an ACK?
+//                    response = new UDPMessage(udpMessage);
+//
+//                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+//                    ObjectOutputStream oos = new ObjectOutputStream(baos);
+//                    oos.writeObject(response);
+//                    oos.flush();
+//
+//                    byte[] responseBytes = baos.toByteArray();
+//
+//                    DatagramPacket responseData = new DatagramPacket(responseBytes, responseBytes.length, request.getAddress(), request.getPort());
+//                    socket.send(responseData);
+
                     continue;
                 }
 
