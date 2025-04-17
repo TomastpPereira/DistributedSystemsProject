@@ -140,7 +140,7 @@ public class ReplicaManager {
                 break;
             case CRASH_NOTIFICATION:
                 String payload = (String) msg.getPayload();
-                int crashedPort = Integer.parseInt(payload.split(":")[0]);
+                int crashedPort = Integer.parseInt(payload.split("::")[0]);
                 System.out.println(crashedPort + "may have crashed");
                 String replicaName = "";
                 if (crashedPort == Integer.parseInt(dotenv.get("RM_ONE_PORT")))

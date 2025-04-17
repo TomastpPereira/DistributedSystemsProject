@@ -4,19 +4,20 @@ import io.github.cdimascio.dotenv.Dotenv;
 import network.UDPMessage;
 
 import javax.jws.WebService;
-import javax.jws.soap.SOAPBinding;
-import javax.xml.namespace.QName;
-import javax.xml.ws.Service;
 
 import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.URL;
 import java.nio.file.Paths;
 import java.rmi.RemoteException;
 import java.util.*;
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 @WebService(endpointInterface = "market.Market")
 public class MarketImpl implements Market {
@@ -619,7 +620,7 @@ public class MarketImpl implements Market {
      * @param newType   String type of the share being acquired
      * @return  Success or Failure Message
      */
-    public synchronized String swapShares(String buyerID, String oldID, String oldType, String newID, String newType){
+    public String swapShares(String buyerID, String oldID, String oldType, String newID, String newType){
         if (!shares.containsKey(oldType) || !shares.containsKey(newType)) {
             return "Error: Invalid share type given.";
         }
@@ -638,17 +639,46 @@ public class MarketImpl implements Market {
         // Process Buy Portion
         String shareMarket = newID.substring(0,3);
         String purchaseResult = "";
-
         String address = dotenv.get("RM_ONE_IP");
+        System.out.println("SWAPSHARE - market is " + shareMarket);
+//        try {
+//            CompletableFuture<String> future = null;
+//            if (shareMarket.equals("NYK")) {
+//                System.out.println("requesting");
+//                future = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+30);
+//            }
+//            if (shareMarket.equals("LON")) {
+//                future = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+20);
+//            }
+//            if (shareMarket.equals("TOK")) {
+//                future = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+40);
+//            }
+//            purchaseResult = future.get(60, TimeUnit.SECONDS);
+//        } catch (ExecutionException e) {
+//            throw new RuntimeException(e);
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        } catch (TimeoutException e) {
+//            throw new RuntimeException(e);
+//        }
         if (shareMarket.equals("NYK")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+30);
+            System.out.println("requesting");
+            purchaseResult = String.valueOf(requestValidatePurchase(newID, newType, ownedShares, address, RMPort+30));
         }
         if (shareMarket.equals("LON")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+20);
+            purchaseResult = String.valueOf(requestValidatePurchase(newID, newType, ownedShares, address, RMPort+20));
         }
         if (shareMarket.equals("TOK")) {
-            purchaseResult = requestValidatePurchase(newID, newType, ownedShares, address, RMPort+40);
+            purchaseResult = String.valueOf(requestValidatePurchase(newID, newType, ownedShares, address, RMPort+40));
         }
+
+//        try {
+//            this.wait(250);
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        }
+
+        System.out.println("Swapshare purchase result:"+ purchaseResult);
 
         // IF Cant Purchase
         if (!purchaseResult.equals("Success")){
@@ -693,9 +723,9 @@ public class MarketImpl implements Market {
      * @param hostReceiver  Host of the market server (in this case always localhost)
      * @param port      Int port of the market server
      */
-    private synchronized void sendBuyOrder(String buyerID, String shareID, String shareType, int shareAmount, String hostReceiver, int port) {
+    private void sendBuyOrder(String buyerID, String shareID, String shareType, int shareAmount, String hostReceiver, int port) {
         new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket()) {
+            try (DatagramSocket socket = new DatagramSocket(0)) {
 
                 String payload = shareID + ":" + shareType + ":" + shareAmount + ":" + buyerID;
                 UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "PURCHASE", 0, null, payload);
@@ -745,43 +775,48 @@ public class MarketImpl implements Market {
      * @param port          Port of the server
      * @return              String response from the server
      */
-    public synchronized String requestValidatePurchase(String shareID, String shareType, int shareAmount, String hostReceiver, int port){
-        try(DatagramSocket socket = new DatagramSocket()){
+    public CompletableFuture<String> requestValidatePurchase(String shareID, String shareType, int shareAmount, String hostReceiver, int port){
+        CompletableFuture<String> resultFuture = new CompletableFuture<>();
+        new Thread(() -> {
+            DatagramSocket socket = null;
+            try {
 
-            String payload = shareID + ":" + shareType + ":" + shareAmount;
-            UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "BUY_CHECK", 0, null, payload);
+                socket = new DatagramSocket();
+                String payload = shareID + ":" + shareType + ":" + shareAmount;
+                UDPMessage message = new UDPMessage(UDPMessage.MessageType.INNER_REQUEST, "BUY_CHECK", 0, null, payload);
 
-            System.out.println("Market sending request to validate purchase");
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                oos.writeObject(message);
+                oos.flush();
 
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ObjectOutputStream oos = new ObjectOutputStream(baos);
-            oos.writeObject(message);
-            oos.flush();
+                InetAddress address = InetAddress.getByName(hostReceiver);
+                DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, port);
+                System.out.println("SENDING BUYCHECK" + address + " " + port);
+                socket.send(request);
+                log("_log.txt", LocalDateTime.now() + " - Sent Request for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
+                        " shareAmount:" + shareAmount + " port: " + port);
 
-            InetAddress address = InetAddress.getByName(hostReceiver);
-            DatagramPacket request = new DatagramPacket(baos.toByteArray(), baos.size(), address, port);
-            socket.send(request);
-            log("_log.txt", LocalDateTime.now() + " - Sent Request for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
-                    " shareAmount:" + shareAmount + " port: " + port);
+                byte[] buffer = new byte[4096];
+                DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+                socket.receive(response);
+                System.out.println("RECEIVED BUYCHECK");
 
-            byte[] buffer = new byte[4096];
-            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
-            socket.receive(response);
-            System.out.println("Market received response to validate purchase");
+                ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
+                ObjectInputStream ois = new ObjectInputStream(bais);
+                UDPMessage udpResponse = (UDPMessage) ois.readObject();
+                String stringResponse = (String) udpResponse.getPayload();
+                resultFuture.complete(stringResponse);
 
-            ByteArrayInputStream bais = new ByteArrayInputStream(response.getData(), 0, response.getLength());
-            ObjectInputStream ois = new ObjectInputStream(bais);
-            UDPMessage udpResponse = (UDPMessage) ois.readObject();
-            String stringResponse = (String) udpResponse.getPayload();
+                log("_log.txt", LocalDateTime.now() + " - Received Response for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
+                        " shareAmount:" + shareAmount + " port: " + port + "message: " + stringResponse);
 
-            log("_log.txt", LocalDateTime.now() + " - Received Response for Purchase Validation - shareID:" + shareID + " shareType:" + shareType +
-                    " shareAmount:" + shareAmount + " port: " + port + "message: " + stringResponse);
 
-            return stringResponse;
-        }
-        catch (Exception e){
-            return "Error contacting " + hostReceiver + ": " + e.getMessage();
-        }
+            } catch (Exception e) {
+                resultFuture.complete("Error contacting " + hostReceiver + ": " + e.getMessage());
+            }
+        }).start();
+        return resultFuture;
     }
 
     /**

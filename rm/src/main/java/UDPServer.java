@@ -19,6 +19,7 @@ import java.util.Map;
 public class UDPServer extends Thread{
 
     private final int port;
+    private final InetAddress ip;
     private final MarketImpl market;
     private final DatagramSocket socket;
 
@@ -30,7 +31,8 @@ public class UDPServer extends Thread{
         this.port = port;
         this.market = market;
         try {
-            this.socket = new DatagramSocket(port);
+            this.ip = InetAddress.getByName(dotenv.get("RM_ONE_IP"));
+            this.socket = new DatagramSocket(port, ip);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -38,21 +40,24 @@ public class UDPServer extends Thread{
 
     public void run(){
         try {
-            System.out.println("UDP Server connected to port " + port);
+            System.out.println("UDP Server connected to " + socket.getLocalAddress() + " port " + socket.getLocalPort());
 
             while (true){
                 byte[] buffer = new byte[4096];
                 DatagramPacket request = new DatagramPacket(buffer, buffer.length);
                 socket.receive(request);
 
+                System.out.println("Market " + port + " received new message - Deserializing");
+
                 ByteArrayInputStream bais = new ByteArrayInputStream(request.getData(), 0, request.getLength());
                 ObjectInputStream ois = new ObjectInputStream(bais);
                 UDPMessage udpMessage = (UDPMessage) ois.readObject();
+                System.out.println("Market " + port + " Receive: " + udpMessage);
 
                 UDPMessage response = null;
 
                 if (udpMessage.getMessageType() == UDPMessage.MessageType.ACK) {
-                    System.out.println("Market Received ACK from FE");
+                    System.out.println("Market Received ACK from " + request.getPort());
 
                     // Send an ACK for an ACK?
 //                    response = new UDPMessage(udpMessage);
@@ -67,6 +72,10 @@ public class UDPServer extends Thread{
 //                    DatagramPacket responseData = new DatagramPacket(responseBytes, responseBytes.length, request.getAddress(), request.getPort());
 //                    socket.send(responseData);
 
+                    continue;
+                }
+                if (udpMessage.getMessageType() == UDPMessage.MessageType.RESPONSE){
+                    System.out.println("Market Incorrectly Received a Message of Type RESPONSE - PLEASE DEBUG");
                     continue;
                 }
 
@@ -84,11 +93,13 @@ public class UDPServer extends Thread{
                         break;
                     case "BUY_CHECK":
                         String buyCheckString = (String) udpMessage.getPayload();
+                        System.out.println("Market doing Buycheck Request. Input -> " + buyCheckString);
                         String[] buyCheckData = buyCheckString.split(":");
                         String result = market.localValidatePurchase(
                                 (String) buyCheckData[0],
                                 (String) buyCheckData[1],
                                  Integer.parseInt(buyCheckData[2]));
+                        System.out.println("BUYCHECK RESULT:" + result);
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "BUY_CHECK", 0, null, result);
                         break;
                     case "PURCHASE":
