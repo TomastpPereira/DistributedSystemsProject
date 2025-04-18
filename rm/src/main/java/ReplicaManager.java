@@ -350,7 +350,9 @@ public class ReplicaManager {
         try (DatagramSocket socket = new DatagramSocket()){
             socket.setSoTimeout(5000);
 
-            UDPMessage ping = new UDPMessage(UDPMessage.MessageType.PING, null, 0, null, null);
+            Map<InetAddress, Integer> endpoint = new HashMap<>();
+            endpoint.put(RM_IP, RM_PORT);
+            UDPMessage ping = new UDPMessage(UDPMessage.MessageType.PING, null, 0, endpoint, null);
             sendUDPMessage(ping, RM_IP, port);
 
             byte[] buffer = new byte[4096];
