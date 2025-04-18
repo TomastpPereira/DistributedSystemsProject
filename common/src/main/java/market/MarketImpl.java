@@ -667,6 +667,8 @@ public class MarketImpl implements Market {
                         + oldType + ", newID " + newID + ", newType" + newType);
                 toReturn.set(" - Success swapShares - buyerID" + buyerID + ", oldID " + oldID + ", oldType "
                         + oldType + ", newID " + newID + ", newType" + newType);
+
+                System.out.println("Swap Shares Returns -> " + toReturn.get());
             });
 
         });

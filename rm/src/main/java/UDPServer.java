@@ -185,7 +185,7 @@ public class UDPServer extends Thread{
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
                         break;
                     case "swapShares":
-                        new Thread( () ->{;
+                        executor.submit( () -> {
                             String paramsU = (String) udpMessage.getPayload();
                             String[] paramsAU = paramsU.split(":");
                             String buyerIDU = paramsAU[0];
