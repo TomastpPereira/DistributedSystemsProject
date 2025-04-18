@@ -281,6 +281,22 @@ public class FrontEnd {
                                 s.addResult(serverPort, result);
                             }
                             processingMessage.setState(new Dead());
+                        } else {
+                            Optional<Message> maybeWaitToDieMessage = messages.stream()
+                                    .filter(m -> m.state instanceof WaitToDie s)
+                                    .map(m -> Map.entry(m, (WaitToDie) m.state))
+                                    .filter(entry -> entry.getValue().sequenceNumber == processingMessage.message.getSequenceNumber())
+                                    .map(Map.Entry::getKey)
+                                    .findFirst();
+
+                            if (maybeWaitToDieMessage.isPresent()) {
+                                String result = (String) processingMessage.message.getPayload();
+                                int serverPort = w.address.getPort();
+                                Message waitToDieMessage = maybeWaitToDieMessage.get();
+                                if (waitToDieMessage.state instanceof WaitToDie d) {
+                                    d.addResult(serverPort, result);
+                                }
+                            }
                         }
                     } else if (processingMessage.state instanceof Sequenced s) {
                         if (s.results.size() >= 2) {
@@ -304,7 +320,7 @@ public class FrontEnd {
                                     );
                                     messages.add(new Message(message, new Sending(s.clientAddress)));
                                     processingMessage.setState(new WaitToDie(s));
-                                } else if (entry.getValue().size() == 3) { // TODO : Send to client at Two
+                                } else if (entry.getValue().size() == 3) {
                                     String response = entry.getKey();
                                     UDPMessage message = new UDPMessage(UDPMessage.MessageType.RESPONSE,
                                             processingMessage.message.getAction(), 0,
@@ -398,7 +414,7 @@ public class FrontEnd {
                             // TODO : Send Crash Report to Client
                         }
                     } else if (processingMessage.state instanceof WaitToDie w) {
-                        if (w.isFull()){
+                        if (w.isFull()) {
                             Map<String, List<Integer>> groupedByResponse = w.results.entrySet()
                                     .stream()
                                     .collect(Collectors.groupingBy(
