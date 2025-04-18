@@ -153,6 +153,7 @@ public class UDPServer extends Thread{
                         String result = market.addShare(shareID, shareType, cap);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "addShare", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
+                        response.setMessageId(udpMessage.getMessageId());
                         break;
                     case "removeShare":
                         params = (String) udpMessage.getPayload();
@@ -162,15 +163,16 @@ public class UDPServer extends Thread{
                         result = market.removeShare(shareID, shareType);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "removeShare", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
+                        response.setMessageId(udpMessage.getMessageId());
                         break;
                     case "listShareAvailability":
-                        //TODO: FIX CASE
                         params = (String) udpMessage.getPayload();
                         paramsA = params.split(":");
                         shareType = paramsA[0];
                         result = market.listShareAvailability(shareType);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "listShareAvailability", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
+                        response.setMessageId(udpMessage.getMessageId());
                         break;
                     case "purchaseShare":
                         params = (String) udpMessage.getPayload();
@@ -183,6 +185,7 @@ public class UDPServer extends Thread{
                         result = market.purchaseShare(buyerID, shareID, shareType, cap, datemonthyear);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "listShareAvailability", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
+                        response.setMessageId(udpMessage.getMessageId());
                         break;
                     case "swapShares":
                         executor.submit( () -> {
@@ -198,6 +201,7 @@ public class UDPServer extends Thread{
                             System.out.println("MarketInner Swapshares response -> " + resultU);
                             UDPMessage responseU = new UDPMessage(UDPMessage.MessageType.RESULT, "swapShares", 0, null, resultU);
                             responseU.setSequenceNumber(udpMessage.getSequenceNumber());
+                            responseU.setMessageId(udpMessage.getMessageId());
 
                             try {
                                 byte[] toRespond = serialize(responseU);
@@ -218,6 +222,7 @@ public class UDPServer extends Thread{
                         result = market.getShares(buyerID);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "getShares", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
+                        response.setMessageId(udpMessage.getMessageId());
                         break;
                     case "sellShare":
                         params = (String) udpMessage.getPayload();
@@ -228,6 +233,7 @@ public class UDPServer extends Thread{
                         result = market.sellShare(buyerID, shareID, cap);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "sellShare", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
+                        response.setMessageId(udpMessage.getMessageId());
                         break;
                     default:
                         break;
