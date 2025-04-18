@@ -12,6 +12,9 @@ import java.net.InetSocketAddress;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * UDP Server which allows for the messages to be passed between markets.
@@ -22,6 +25,7 @@ public class UDPServer extends Thread{
     private final InetAddress ip;
     private final MarketImpl market;
     private final DatagramSocket socket;
+    private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
     private static final Dotenv dotenv = Dotenv.configure()
             .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
@@ -92,25 +96,37 @@ public class UDPServer extends Thread{
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "CROSS", 0, null, "Success");
                         break;
                     case "BUY_CHECK":
-                        String buyCheckString = (String) udpMessage.getPayload();
-                        System.out.println("Market doing Buycheck Request. Input -> " + buyCheckString);
-                        String[] buyCheckData = buyCheckString.split(":");
-                        String result = market.localValidatePurchase(
-                                (String) buyCheckData[0],
-                                (String) buyCheckData[1],
-                                 Integer.parseInt(buyCheckData[2]));
-                        System.out.println("BUYCHECK RESULT:" + result);
-                        response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "BUY_CHECK", 0, null, result);
-                        break;
+                        executor.submit( () -> {
+                            try {
+                                String buyCheckString = (String) udpMessage.getPayload();
+                                System.out.println("Market doing Buycheck Request. Input -> " + buyCheckString);
+                                String[] buyCheckData = buyCheckString.split(":");
+                                String result = market.localValidatePurchase(
+                                        (String) buyCheckData[0],
+                                        (String) buyCheckData[1],
+                                        Integer.parseInt(buyCheckData[2]));
+                                System.out.println("BUYCHECK RESULT:" + result);
+                                UDPMessage thisResponse = new UDPMessage(UDPMessage.MessageType.RESPONSE, "BUY_CHECK", 0, null, result);
+
+                                byte[] responseBytes = serialize(thisResponse);
+                                DatagramPacket responsePacket = new DatagramPacket(responseBytes, responseBytes.length, request.getAddress(), request.getPort());
+                                socket.send(responsePacket);
+
+                            } catch (Exception e){
+                                System.err.println("Error with Buy_Check" + e.getMessage());
+                                e.printStackTrace();
+                            }
+                        });
+                        continue;
                     case "PURCHASE":
                         String purchaseString = (String) udpMessage.getPayload();
                         String[] purchaseData = purchaseString.split(":");
                         String purchaseResult = market.purchaseShare(
-                                (String) purchaseData[0],
-                                (String) purchaseData[1],
-                                (String) purchaseData[2],
-                                Integer.parseInt(purchaseData[3]),
-                                (String) purchaseData[4]);
+                                purchaseData[3],
+                                purchaseData[0],
+                                purchaseData[1],
+                                Integer.parseInt(purchaseData[2]),
+                                String.valueOf(999999));
                         response = new UDPMessage(UDPMessage.MessageType.RESPONSE, "PURCHASE", 0, null, purchaseResult);
                         break;
                     case "AVAILABILITY":
@@ -134,7 +150,7 @@ public class UDPServer extends Thread{
                         String shareID = paramsA[0];
                         shareType = paramsA[1];
                         int cap = Integer.parseInt(paramsA[2]);
-                        result = market.addShare(shareID, shareType, cap);
+                        String result = market.addShare(shareID, shareType, cap);
                         response = new UDPMessage(UDPMessage.MessageType.RESULT, "addShare", 0, null, result);
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
                         break;
@@ -169,17 +185,32 @@ public class UDPServer extends Thread{
                         response.setSequenceNumber(udpMessage.getSequenceNumber());
                         break;
                     case "swapShares":
-                        params = (String) udpMessage.getPayload();
-                        paramsA = params.split(":");
-                        buyerID = paramsA[0];
-                        String oldShareID = paramsA[1];
-                        String oldShareType = paramsA[2];
-                        String newShareID = paramsA[3];
-                        String newShareType = paramsA[4];
-                        result = market.swapShares(buyerID, oldShareID, oldShareType, newShareID, newShareType);
-                        response = new UDPMessage(UDPMessage.MessageType.RESULT, "swapShares", 0, null, result);
-                        response.setSequenceNumber(udpMessage.getSequenceNumber());
-                        break;
+                        new Thread( () ->{;
+                            String paramsU = (String) udpMessage.getPayload();
+                            String[] paramsAU = paramsU.split(":");
+                            String buyerIDU = paramsAU[0];
+                            String oldShareID = paramsAU[1];
+                            String oldShareType = paramsAU[2];
+                            String newShareID = paramsAU[3];
+                            String newShareType = paramsAU[4];
+
+                            String resultU = market.swapShares(buyerIDU, oldShareID, oldShareType, newShareID, newShareType);
+                            System.out.println("MarketInner Swapshares response -> " + resultU);
+                            UDPMessage responseU = new UDPMessage(UDPMessage.MessageType.RESULT, "swapShares", 0, null, resultU);
+                            responseU.setSequenceNumber(udpMessage.getSequenceNumber());
+
+                            try {
+                                byte[] toRespond = serialize(responseU);
+                                InetAddress address;
+                                address = InetAddress.getByName(dotenv.get("FE_IP"));
+                                int port = Integer.parseInt(dotenv.get("FE_PORT"));
+                                DatagramPacket responseDataU = new DatagramPacket(toRespond, toRespond.length, address, port);
+                                socket.send(responseDataU);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+                        continue;
                     case "getShares":
                         params = (String) udpMessage.getPayload();
                         paramsA = params.split(":");
@@ -236,6 +267,24 @@ public class UDPServer extends Thread{
 
         }
         catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    private byte[] serialize(UDPMessage msg) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(msg);
+        oos.flush();
+        return baos.toByteArray();
+    }
+
+    private void sendUDPMessage(UDPMessage msg, InetAddress destAddress, int destPort){
+        try {
+            byte[] data = serialize(msg);
+            DatagramPacket packet = new DatagramPacket(data, data.length, destAddress, destPort);
+            socket.send(packet);
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }

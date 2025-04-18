@@ -532,6 +532,7 @@ public class ReplicaManager {
             String classPath = System.getProperty("java.class.path");
 
             String className = this.getClass().getName();
+            System.out.println("Crashed -> " + className);
 
             int port = RM_PORTS.get(crashed);
 
@@ -572,8 +573,5 @@ public class ReplicaManager {
             e.printStackTrace();
         }
     }
-
-
-
 
 }
