@@ -264,6 +264,7 @@ public class FrontEnd {
                                 if (waitToDieMessage.state instanceof WaitToDie d) {
                                     d.addResult(serverPort, result);
                                 }
+                                processingMessage.setState(new Dead());
                             }
                         }
                     } else if (processingMessage.state instanceof Sequenced s) {
