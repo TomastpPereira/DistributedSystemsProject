@@ -8,7 +8,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class ReplicaManager {
+public class ReplicaManager implements AutoCloseable{
 
     private static final Dotenv dotenv = Dotenv.configure()
             .directory(Paths.get(System.getProperty("user.dir")).toString()) //.getParent()
@@ -40,7 +40,7 @@ public class ReplicaManager {
      * @param ip Ip of the server system, provided as a string.
      * @param port Port of the replica manager, defines the ports of the replicas associated with it.
      */
-    public ReplicaManager(InetAddress ip, int port, String name){
+    public ReplicaManager(InetAddress ip, int port, String name) {
 
         // LAUNCHING RM
         RM_PORT = port;
@@ -51,7 +51,9 @@ public class ReplicaManager {
         fresh = true;
 
         try {
-            socket = new DatagramSocket(RM_PORT);
+            socket = new DatagramSocket(null);
+            socket.setReuseAddress(true);
+            socket.bind(new InetSocketAddress(RM_PORT));
         } catch (SocketException e) {
             throw new RuntimeException(e);
         }
@@ -81,6 +83,7 @@ public class ReplicaManager {
         failureCount.put("RM1",0);
         failureCount.put("RM2",0);
         failureCount.put("RM3",0);
+        System.out.println("Startup Failure Count" + failureCount.get("RM1"));
 
 
 
@@ -88,7 +91,8 @@ public class ReplicaManager {
         startListener();
 
         // Allows the RM to notify when it's been restarted so that it can receive data.
-        sendHello();
+        if (fresh)
+            sendHello();
     }
 
     /**
@@ -153,13 +157,16 @@ public class ReplicaManager {
                 break;
             case INCORRECT_RESULT_NOTIFICATION:
                 payload = (String) msg.getPayload();
+                System.out.println("Payload of Incorrect Result is " + payload);
                 crashedPort = Integer.parseInt(payload.split(":")[0]);
+                int finalPort = crashedPort%10 + 7000;
+                System.out.println("final port is " + finalPort);
                 replicaName = "";
-                if (crashedPort == Integer.parseInt(dotenv.get("RM_ONE_PORT")))
+                if (finalPort == Integer.parseInt(dotenv.get("RM_ONE_PORT")))
                     replicaName = "RM1";
-                else if (crashedPort == Integer.parseInt(dotenv.get("RM_TWO_PORT")))
+                else if (finalPort == Integer.parseInt(dotenv.get("RM_TWO_PORT")))
                     replicaName = "RM2";
-                else if (crashedPort == Integer.parseInt(dotenv.get("RM_THREE_PORT")))
+                else if (finalPort == Integer.parseInt(dotenv.get("RM_THREE_PORT")))
                     replicaName = "RM3";
                 processFailure(replicaName);
                 break;
@@ -181,7 +188,7 @@ public class ReplicaManager {
             case HELLO:
                 // Ensures that we don't have a chain of data sending during initial startup
                 if (!fresh)
-                    sendData(msg.getEndpoints());
+                    sendSequenceNumber(msg.getEndpoints());
                 break;
             case SYNC:
                 ReplicaStateSnapshot snapshot = (ReplicaStateSnapshot) msg.getPayload();
@@ -191,6 +198,10 @@ public class ReplicaManager {
                 String toClear = (String) msg.getPayload();
                 votesForReplica.put(toClear, new HashSet<>());
                 failureCount.put(toClear, 0);
+                break;
+            case SEQUENCE:
+                this.expectedSequence = (Long) msg.getPayload();
+                System.out.println("Fresh RM Loaded to Sequence number " + expectedSequence);
                 break;
 
         }
@@ -204,6 +215,7 @@ public class ReplicaManager {
      */
     private void processFailure(String incorrectRM) {
 
+        System.out.println("Incorrect RM is " + incorrectRM);
         int numFails = failureCount.get(incorrectRM);
         numFails++;
         failureCount.put(incorrectRM, numFails);
@@ -442,10 +454,28 @@ public class ReplicaManager {
                     e.printStackTrace();
                 }
 
-                restart(crashed);
+//                restart(crashed);
+//                try {
+//                    Thread.sleep(10000);
+//
+//                    Map<InetAddress, Integer> endpoint = new HashMap<>();
+//                    InetAddress address = RM_IP;
+//                    int port = RM_PORTS.get(crashed);
+//                    endpoint.put(address, port);
+//                    sendData(endpoint);
+//
+//                } catch (InterruptedException e) {
+//                    throw new RuntimeException(e);
+//                }
             }
         }
 
+    }
+
+    private void sendSequenceNumber(Map<InetAddress, Integer> endpoints){
+        UDPMessage syncMessage = new UDPMessage(UDPMessage.MessageType.SEQUENCE, null, 0, null, expectedSequence);
+        InetAddress address = (InetAddress) endpoints.keySet().toArray()[0];
+        sendUDPMessage(syncMessage, address, endpoints.get(address));
     }
 
     /**
@@ -534,7 +564,17 @@ public class ReplicaManager {
 
             String classPath = System.getProperty("java.class.path");
 
-            String className = this.getClass().getName();
+            String className = this.getClass().getName()+"Main";
+
+            switch (crashed){
+                case "RM1":
+                    className = className;
+                case "RM2":
+                    className = className + 2;
+                case "RM3":
+                    className = className + 3;
+            }
+
             System.out.println("Crashed -> " + className);
 
             int port = RM_PORTS.get(crashed);
@@ -542,10 +582,7 @@ public class ReplicaManager {
             ProcessBuilder builder = new ProcessBuilder(
                     javaBin,
                     "-cp", classPath,
-                    className,
-                    String.valueOf(RM_IP),
-                    String.valueOf(port),
-                    crashed
+                    className
             );
 
             builder.inheritIO();
@@ -577,4 +614,11 @@ public class ReplicaManager {
         }
     }
 
+    @Override
+    public void close() throws Exception {
+        System.out.println("Replica Manager " + RM_NAME + " is closing");
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
+    }
 }

@@ -30,7 +30,8 @@ public class UDPMessage implements Serializable {
         CRASH_NOTIFICATION,
         INCORRECT_RESULT_NOTIFICATION,
         RESULT_TIMEOUT,
-        RESULT
+        RESULT,
+        SEQUENCE
     }
 
     private String messageId;
