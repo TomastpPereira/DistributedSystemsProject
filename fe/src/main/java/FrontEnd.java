@@ -227,7 +227,13 @@ public class FrontEnd {
                     } else if (processingMessage.state instanceof Sending s) {
                         taskExecutor.submit(() -> {
                             sendMessage(processingMessage.message, s.remoteAddress.getAddress(), s.remoteAddress.getPort());
-                            if (processingMessage.message.getMessageType() == UDPMessage.MessageType.ACK || processingMessage.message.getMessageType() == UDPMessage.MessageType.RESPONSE) {
+                            if (
+                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.ACK ||
+                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.RESPONSE ||
+                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.CRASH_NOTIFICATION ||
+                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION
+
+                            ) {
                                 processingMessage.setState(new Dead());
                             } else {
                                 processingMessage.setState(new WaitForAck(s.remoteAddress));
@@ -424,7 +430,7 @@ public class FrontEnd {
                     }
                 }
                 try {
-                    Thread.sleep(50);
+                    Thread.sleep(200);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
