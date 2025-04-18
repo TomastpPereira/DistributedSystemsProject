@@ -329,6 +329,7 @@ public class ReplicaManager {
 
         UDPMessage forwardMessage = new UDPMessage(UDPMessage.MessageType.REQUEST, action, 0, null, sendData.toString());
         forwardMessage.setSequenceNumber(msg.getSequenceNumber());
+        forwardMessage.setMessageId(msg.getMessageId());
 
         InetAddress address;
         int marketPort = markets.get(marketName);
