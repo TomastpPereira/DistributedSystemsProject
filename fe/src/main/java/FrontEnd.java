@@ -68,9 +68,11 @@ public class FrontEnd {
         InetSocketAddress clientAddress;
         HashMap<Integer, String> results;
         long creationTime;
+        String messageId;
 
-        Sequenced(long sequenceNumber, InetSocketAddress clientAddress) {
+        Sequenced(long sequenceNumber,String messageId, InetSocketAddress clientAddress) {
             this.sequenceNumber = sequenceNumber;
+            this.messageId = messageId;
             this.clientAddress = clientAddress;
             this.results = new HashMap<>();
             this.creationTime = System.currentTimeMillis();
@@ -90,9 +92,11 @@ public class FrontEnd {
         InetSocketAddress clientAddress;
         HashMap<Integer, String> results;
         long creationTime;
+        String messageId;
 
         WaitToDie(Sequenced sc) {
             this.sequenceNumber = sc.sequenceNumber;
+            this.messageId = sc.messageId;
             this.clientAddress = sc.clientAddress;
             this.results = sc.results;
             this.creationTime = sc.creationTime;
@@ -129,7 +133,7 @@ public class FrontEnd {
             byte[] buffer = message.serialize();
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, remoteAddress, remotePort);
             socket.send(packet);
-            System.out.println("[" + System.currentTimeMillis() + "][Send]" + remoteAddress + ":" + remotePort + " " + message.getPayload());
+            System.out.println("[" + System.currentTimeMillis() + "][Send]" + ":" + remotePort + " " + message);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }
@@ -165,7 +169,7 @@ public class FrontEnd {
                     Message receivedMsg = new Message(msg, new Received(new InetSocketAddress(packet.getAddress(), packet.getPort())));
                     messages.add(receivedMsg);
                 }
-                System.out.println("[" + System.currentTimeMillis() + "][Received]" + packet.getAddress() + ":" + packet.getPort() + " " + msg.getPayload());
+                System.out.println("[" + System.currentTimeMillis() + "][Received]" + ":" + packet.getPort() + " " + msg);
             } catch (IOException e) {
                 System.out.println("IOException in Front-End receiveLoop " + e.getMessage());
             }
@@ -198,11 +202,11 @@ public class FrontEnd {
                                     Map.Entry<InetAddress, Integer> firstEntry = processingMessage.message.getEndpoints().entrySet().iterator().next();
                                     InetSocketAddress clientAddress = new InetSocketAddress(firstEntry.getKey(), firstEntry.getValue());
                                     UDPMessage message = new UDPMessage(processingMessage.message);
-                                    processingMessage.message.setMessageType(UDPMessage.MessageType.ACK);
+                                    message.setMessageType(UDPMessage.MessageType.ACK);
                                     Message ackMessage = new Message(message, new Sending(r.address));
                                     messages.add(ackMessage);
 
-                                    processingMessage.setState(new Sequenced(processingMessage.message.getSequenceNumber(), clientAddress));
+                                    processingMessage.setState(new Sequenced(processingMessage.message.getSequenceNumber(), processingMessage.message.getMessageId(), clientAddress));
                                 } catch (Exception e) {
                                     System.out.println(e.getMessage());
                                 }
@@ -227,16 +231,10 @@ public class FrontEnd {
                     } else if (processingMessage.state instanceof Sending s) {
                         taskExecutor.submit(() -> {
                             sendMessage(processingMessage.message, s.remoteAddress.getAddress(), s.remoteAddress.getPort());
-                            if (
-                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.ACK ||
-                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.RESPONSE ||
-                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.CRASH_NOTIFICATION ||
-                                    processingMessage.message.getMessageType() == UDPMessage.MessageType.INCORRECT_RESULT_NOTIFICATION
-
-                            ) {
-                                processingMessage.setState(new Dead());
-                            } else {
+                            if (processingMessage.message.getMessageType() == UDPMessage.MessageType.REQUEST) {
                                 processingMessage.setState(new WaitForAck(s.remoteAddress));
+                            } else {
+                                processingMessage.setState(new Dead());
                             }
                         });
                     } else if (processingMessage.state instanceof WaitForAck w) {
@@ -251,7 +249,7 @@ public class FrontEnd {
                             Optional<Message> maybeSequencedMessage = messages.stream()
                                     .filter(m -> m.state instanceof Sequenced s)
                                     .map(m -> Map.entry(m, (Sequenced) m.state))
-                                    .filter(entry -> entry.getValue().sequenceNumber == processingMessage.message.getSequenceNumber())
+                                    .filter(entry -> entry.getValue().messageId.equals(processingMessage.message.getMessageId()))
                                     .map(Map.Entry::getKey)
                                     .findFirst();
                             if (maybeSequencedMessage.isPresent()) {
@@ -266,7 +264,7 @@ public class FrontEnd {
                                 Optional<Message> maybeWaitToDieMessage = messages.stream()
                                         .filter(m -> m.state instanceof WaitToDie s)
                                         .map(m -> Map.entry(m, (WaitToDie) m.state))
-                                        .filter(entry -> entry.getValue().sequenceNumber == processingMessage.message.getSequenceNumber())
+                                        .filter(entry -> entry.getValue().messageId.equals(processingMessage.message.getMessageId()))
                                         .map(Map.Entry::getKey)
                                         .findFirst();
 
@@ -369,7 +367,8 @@ public class FrontEnd {
                                     processingMessage.setState(new Dead());
                                 }
 
-                            } else if ((System.currentTimeMillis() - s.creationTime) >= REPLICA_RESPONSE_TIMEOUT) {
+                            }
+                            else if ((System.currentTimeMillis() - s.creationTime) >= REPLICA_RESPONSE_TIMEOUT) {
                                 List<Integer> unresponsivePorts = replicaManagerEndpoints.stream()
                                         .map(InetSocketAddress::getPort)
                                         .filter(port -> !s.results.containsKey(port))
@@ -423,6 +422,36 @@ public class FrontEnd {
                                     }
                                     processingMessage.setState(new Dead());
                                 }
+                            } else if ((System.currentTimeMillis() - w.creationTime) >= REPLICA_RESPONSE_TIMEOUT) {
+                                Map<String, List<Integer>> groupedByResponse = w.results.entrySet()
+                                        .stream()
+                                        .collect(Collectors.groupingBy(
+                                                Map.Entry::getValue,
+                                                Collectors.mapping(Map.Entry::getKey,
+                                                        Collectors.toList())
+                                        ));
+
+                                Map.Entry<String, List<Integer>> highestGroup = groupedByResponse.entrySet()
+                                        .stream()
+                                        .max(Comparator.comparingInt(entry -> entry.getValue().size()))
+                                        .orElse(null);
+
+                                assert highestGroup != null;
+                                List<Integer> responsivePorts = highestGroup.getValue();
+
+                                StringBuilder errorMsg = new StringBuilder();
+                                for (Integer addr : responsivePorts) {
+                                    errorMsg.append(addr).append("::");
+                                }
+                                int length = errorMsg.length();
+                                if (length >= 2 && errorMsg.substring(length - 2).equals("::")) {
+                                    errorMsg.setLength(length - 2);
+                                }
+                                UDPMessage message = new UDPMessage(UDPMessage.MessageType.CRASH_NOTIFICATION, processingMessage.message.getAction(), 0, processingMessage.message.getEndpoints(), processingMessage.message.getSequenceNumber(), errorMsg.toString());
+                                for (InetSocketAddress rmEndpoint : replicaManagerEndpoints) {
+                                    messages.add(new Message(message, new Sending(rmEndpoint)));
+                                }
+                                processingMessage.setState(new Dead());
                             }
                         });
                     } else if (processingMessage.state instanceof Dead d) {
